@@ -14,7 +14,285 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      agent_settings: {
+        Row: {
+          blocked_keywords: string[]
+          id: string
+          is_paused: boolean
+          max_clips_per_day: number
+          min_score_threshold: number
+          updated_at: string
+        }
+        Insert: {
+          blocked_keywords?: string[]
+          id?: string
+          is_paused?: boolean
+          max_clips_per_day?: number
+          min_score_threshold?: number
+          updated_at?: string
+        }
+        Update: {
+          blocked_keywords?: string[]
+          id?: string
+          is_paused?: boolean
+          max_clips_per_day?: number
+          min_score_threshold?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      audit_log: {
+        Row: {
+          action: string
+          clip_id: string | null
+          created_at: string
+          details: Json | null
+          id: string
+        }
+        Insert: {
+          action: string
+          clip_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+        }
+        Update: {
+          action?: string
+          clip_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+        }
+        Relationships: []
+      }
+      campaigns: {
+        Row: {
+          budget_remaining: number | null
+          budget_total: number | null
+          created_at: string
+          earnings: number | null
+          id: string
+          name: string
+          payout_rate: string | null
+          platform: string | null
+          requirements: string | null
+          status: string
+        }
+        Insert: {
+          budget_remaining?: number | null
+          budget_total?: number | null
+          created_at?: string
+          earnings?: number | null
+          id?: string
+          name: string
+          payout_rate?: string | null
+          platform?: string | null
+          requirements?: string | null
+          status?: string
+        }
+        Update: {
+          budget_remaining?: number | null
+          budget_total?: number | null
+          created_at?: string
+          earnings?: number | null
+          id?: string
+          name?: string
+          payout_rate?: string | null
+          platform?: string | null
+          requirements?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      chat_velocity: {
+        Row: {
+          clip_id: string
+          msgs_per_sec: number | null
+          peak_window: string | null
+          sample_messages: Json | null
+        }
+        Insert: {
+          clip_id: string
+          msgs_per_sec?: number | null
+          peak_window?: string | null
+          sample_messages?: Json | null
+        }
+        Update: {
+          clip_id?: string
+          msgs_per_sec?: number | null
+          peak_window?: string | null
+          sample_messages?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_velocity_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: true
+            referencedRelation: "clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clips: {
+        Row: {
+          approved_at: string | null
+          created_at: string
+          duration_seconds: number | null
+          hook_caption: string | null
+          id: string
+          kick_clip_id: string | null
+          kick_clip_url: string | null
+          kick_view_count: number | null
+          platforms: Json
+          score_breakdown: Json | null
+          source_id: string | null
+          status: string
+          stream_timestamp: string | null
+          thumbnail_url: string | null
+          title: string | null
+          video_url: string | null
+          virality_score: number | null
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          hook_caption?: string | null
+          id?: string
+          kick_clip_id?: string | null
+          kick_clip_url?: string | null
+          kick_view_count?: number | null
+          platforms?: Json
+          score_breakdown?: Json | null
+          source_id?: string | null
+          status?: string
+          stream_timestamp?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          video_url?: string | null
+          virality_score?: number | null
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          hook_caption?: string | null
+          id?: string
+          kick_clip_id?: string | null
+          kick_clip_url?: string | null
+          kick_view_count?: number | null
+          platforms?: Json
+          score_breakdown?: Json | null
+          source_id?: string | null
+          status?: string
+          stream_timestamp?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          video_url?: string | null
+          virality_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clips_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      download_history: {
+        Row: {
+          clip_id: string | null
+          downloaded_at: string
+          format: string | null
+          id: string
+        }
+        Insert: {
+          clip_id?: string | null
+          downloaded_at?: string
+          format?: string | null
+          id?: string
+        }
+        Update: {
+          clip_id?: string | null
+          downloaded_at?: string
+          format?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "download_history_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sources: {
+        Row: {
+          avg_viewers: number | null
+          created_at: string
+          display_name: string
+          follower_count: number | null
+          id: string
+          is_monitoring: boolean
+          last_known_live: boolean
+          last_polled_at: string | null
+          poll_interval_min: number
+          slug: string
+        }
+        Insert: {
+          avg_viewers?: number | null
+          created_at?: string
+          display_name: string
+          follower_count?: number | null
+          id?: string
+          is_monitoring?: boolean
+          last_known_live?: boolean
+          last_polled_at?: string | null
+          poll_interval_min?: number
+          slug: string
+        }
+        Update: {
+          avg_viewers?: number | null
+          created_at?: string
+          display_name?: string
+          follower_count?: number | null
+          id?: string
+          is_monitoring?: boolean
+          last_known_live?: boolean
+          last_polled_at?: string | null
+          poll_interval_min?: number
+          slug?: string
+        }
+        Relationships: []
+      }
+      templates: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          settings: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          settings?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          settings?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
