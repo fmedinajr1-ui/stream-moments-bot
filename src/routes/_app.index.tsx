@@ -67,7 +67,7 @@ function QueuePage() {
 
 
   function approve(id: string) {
-    setClips((cs) => cs.filter((c) => c.id !== id));
+    if (!useMock) mutate.mutate({ id, status: "approved" });
     setSelected((s) => {
       const n = new Set(s);
       n.delete(id);
@@ -75,17 +75,12 @@ function QueuePage() {
     });
   }
   function reject(id: string) {
-    setClips((cs) => cs.filter((c) => c.id !== id));
+    if (!useMock) mutate.mutate({ id, status: "rejected" });
   }
-  function regenerate(id: string) {
-    setClips((cs) =>
-      cs.map((c) =>
-        c.id === id
-          ? { ...c, hook_caption: c.hook_caption + " (V2)" }
-          : c,
-      ),
-    );
+  function regenerate(_id: string) {
+    // Regen is a no-op in live mode for now; it would re-score the clip.
   }
+
 
   // Spacebar approves focused card
   useEffect(() => {
