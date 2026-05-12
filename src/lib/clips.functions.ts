@@ -26,7 +26,11 @@ export const setClipStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const patch: Record<string, unknown> = { status: data.status };
+    const patch: {
+      status: string;
+      approved_at?: string;
+      hook_caption?: string;
+    } = { status: data.status };
     if (data.status === "approved")
       patch.approved_at = new Date().toISOString();
     if (data.hook_caption) patch.hook_caption = data.hook_caption;
@@ -40,18 +44,3 @@ export const setClipStatus = createServerFn({ method: "POST" })
       .insert({ action: data.status, clip_id: data.id });
     return { ok: true };
   });
-
-export const triggerPoll = createServerFn({ method: "POST" }).handler(
-  async () => {
-    const url = `${process.env.SUPABASE_URL?.replace(/\/$/, "")}`;
-    // Just call the public route directly via fetch using the project URL.
-    // We don't have it server-side cleanly; the cron route does the work.
-    // Easier: import the poller inline.
-    const mod = await import("@/routes/api/public/cron/poll-kick");
-    void mod;
-    // Re-implement: fetch into our own host. Use VITE_SUPABASE_URL is wrong.
-    // Instead we simply invoke the poll function via dynamic import of helper.
-    return { ok: true, hint: "use /api/public/cron/poll-kick directly" };
-    void url;
-  },
-);
