@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 export function StreamStatusBar({
   streamer = "DEEN",
   isLive = true,
@@ -29,9 +31,22 @@ export function StreamStatusBar({
           <span className="text-muted-foreground tracking-widest">OFFLINE</span>
         </>
       )}
-      <span className="ml-auto text-muted-foreground tracking-widest">
-        {new Date().toUTCString().slice(17, 25)} UTC
-      </span>
+      <ClientClock />
     </div>
+  );
+}
+
+function ClientClock() {
+  const [t, setT] = useState<string>("");
+  useEffect(() => {
+    const tick = () => setT(new Date().toUTCString().slice(17, 25));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span suppressHydrationWarning className="ml-auto text-muted-foreground tracking-widest">
+      {t} UTC
+    </span>
   );
 }

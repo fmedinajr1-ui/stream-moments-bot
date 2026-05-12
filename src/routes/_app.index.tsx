@@ -1,32 +1,73 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { ClipCard } from "@/components/clip-card";
-import { MOCK_CLIPS } from "@/lib/mock-clips";
+import { MOCK_CLIPS, type MockClip } from "@/lib/mock-clips";
+import { listPendingClips, setClipStatus } from "@/lib/clips.functions";
 import { useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_app/")({
   component: QueuePage,
 });
 
+function dbToCard(c: any): MockClip {
+  const sb = c.score_breakdown ?? {};
+  return {
+    id: c.id,
+    source_streamer: (c.sources?.display_name ?? c.sources?.slug ?? "KICK").toUpperCase(),
+    source_handle: `@${c.sources?.slug ?? "kick"}`,
+    stream_timestamp: (c.stream_timestamp ?? "").slice(11, 19) || "—",
+    date_label: new Date(c.created_at).toLocaleDateString(),
+    virality_score: c.virality_score ?? 0,
+    score_breakdown: {
+      reaction: sb.reaction ?? 0,
+      chat: sb.chat ?? 0,
+      audio: sb.audio ?? 0,
+    },
+    hook_caption: c.hook_caption ?? c.title ?? "UNTITLED",
+    duration_seconds: c.duration_seconds ?? 0,
+    video_url: c.video_url ?? "",
+    thumbnail_url: c.thumbnail_url ?? "",
+  };
+}
+
 function QueuePage() {
+  const fetchClips = useServerFn(listPendingClips);
+  const setStatus = useServerFn(setClipStatus);
+  const { data, refetch } = useQuery({
+    queryKey: ["pending-clips"],
+    queryFn: () => fetchClips(),
+    refetchInterval: 30_000,
+  });
+  const mutate = useMutation({
+    mutationFn: (v: { id: string; status: "approved" | "rejected" }) =>
+      setStatus({ data: v }),
+    onSuccess: () => refetch(),
+  });
+
+  const liveClips = (data?.clips ?? []).map(dbToCard);
+  const useMock = liveClips.length === 0;
+  const sourceClips = useMock ? MOCK_CLIPS : liveClips;
+
   const [streamer, setStreamer] = useState<string>("ALL");
   const [minScore, setMinScore] = useState(0);
-  const [clips, setClips] = useState(MOCK_CLIPS);
   const [batchMode, setBatchMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusIdx, setFocusIdx] = useState(0);
 
   const filtered = useMemo(
     () =>
-      clips.filter(
+      sourceClips.filter(
         (c) =>
           (streamer === "ALL" || c.source_streamer === streamer) &&
           c.virality_score >= minScore,
       ),
-    [clips, streamer, minScore],
+    [sourceClips, streamer, minScore],
   );
 
+
   function approve(id: string) {
-    setClips((cs) => cs.filter((c) => c.id !== id));
+    if (!useMock) mutate.mutate({ id, status: "approved" });
     setSelected((s) => {
       const n = new Set(s);
       n.delete(id);
@@ -34,17 +75,12 @@ function QueuePage() {
     });
   }
   function reject(id: string) {
-    setClips((cs) => cs.filter((c) => c.id !== id));
+    if (!useMock) mutate.mutate({ id, status: "rejected" });
   }
-  function regenerate(id: string) {
-    setClips((cs) =>
-      cs.map((c) =>
-        c.id === id
-          ? { ...c, hook_caption: c.hook_caption + " (V2)" }
-          : c,
-      ),
-    );
+  function regenerate(_id: string) {
+    // Regen is a no-op in live mode for now; it would re-score the clip.
   }
+
 
   // Spacebar approves focused card
   useEffect(() => {
