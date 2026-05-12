@@ -18,6 +18,7 @@ import { Route as AppPipelineRouteImport } from './routes/_app.pipeline'
 import { Route as AppLibraryRouteImport } from './routes/_app.library'
 import { Route as AppCampaignsRouteImport } from './routes/_app.campaigns'
 import { Route as AppAnalyticsRouteImport } from './routes/_app.analytics'
+import { Route as ApiPublicCronPollKickRouteImport } from './routes/api/public/cron/poll-kick'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -63,6 +64,11 @@ const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiPublicCronPollKickRoute = ApiPublicCronPollKickRouteImport.update({
+  id: '/api/public/cron/poll-kick',
+  path: '/api/public/cron/poll-kick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
+  '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
 }
 export interface FileRoutesByTo {
   '/analytics': typeof AppAnalyticsRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
   '/': typeof AppIndexRoute
+  '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/_app/sources': typeof AppSourcesRoute
   '/_app/template': typeof AppTemplateRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/template'
+    | '/api/public/cron/poll-kick'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/analytics'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/sources'
     | '/template'
     | '/'
+    | '/api/public/cron/poll-kick'
   id:
     | '__root__'
     | '/_app'
@@ -128,10 +139,12 @@ export interface FileRouteTypes {
     | '/_app/sources'
     | '/_app/template'
     | '/_app/'
+    | '/api/public/cron/poll-kick'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  ApiPublicCronPollKickRoute: typeof ApiPublicCronPollKickRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -199,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyticsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/public/cron/poll-kick': {
+      id: '/api/public/cron/poll-kick'
+      path: '/api/public/cron/poll-kick'
+      fullPath: '/api/public/cron/poll-kick'
+      preLoaderRoute: typeof ApiPublicCronPollKickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -228,7 +248,18 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  ApiPublicCronPollKickRoute: ApiPublicCronPollKickRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
