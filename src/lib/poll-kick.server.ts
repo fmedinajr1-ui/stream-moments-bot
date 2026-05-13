@@ -197,45 +197,43 @@ export async function pollSources(opts?: { sourceId?: string }): Promise<PollSum
   // Build few-shot once per poll run
   const examples = await getFewShot();
 
-  for (const src of sources ?? []) {
-    summary.polled++;
+  const MAX_CLIPS_PER_SOURCE = 5;
+  const SCORE_CONCURRENCY = 5;
+
+  async function processSource(src: any): Promise<PollSummary["sources"][number]> {
     const sourceLog: PollSummary["sources"][number] = {
       slug: src.slug,
       live: false,
       new: 0,
     };
-
     try {
       const channel = await getChannel(src.slug);
-      if (channel) {
-        sourceLog.live = channel.isLive;
-        await supabaseAdmin
-          .from("sources")
-          .update({
-            last_polled_at: new Date().toISOString(),
-            last_known_live: channel.isLive,
-            follower_count: channel.followers ?? src.follower_count,
-            avg_viewers: channel.viewers ?? src.avg_viewers,
-          })
-          .eq("id", src.id);
-      } else {
-        await supabaseAdmin
-          .from("sources")
-          .update({ last_polled_at: new Date().toISOString() })
-          .eq("id", src.id);
-      }
+      sourceLog.live = !!channel?.isLive;
+      await supabaseAdmin
+        .from("sources")
+        .update({
+          last_polled_at: new Date().toISOString(),
+          last_known_live: !!channel?.isLive,
+          ...(channel
+            ? {
+                follower_count: channel.followers ?? src.follower_count,
+                avg_viewers: channel.viewers ?? src.avg_viewers,
+              }
+            : {}),
+        })
+        .eq("id", src.id);
 
       if (settings?.is_paused) {
         sourceLog.skipped = "agent_paused";
-        summary.sources.push(sourceLog);
-        continue;
+        return sourceLog;
+      }
+      if (!channel?.isLive) {
+        sourceLog.skipped = "offline";
+        return sourceLog;
       }
 
       const clips = await getRecentClips(src.slug);
-      if (clips.length === 0) {
-        summary.sources.push(sourceLog);
-        continue;
-      }
+      if (clips.length === 0) return sourceLog;
 
       const ids = clips.map((c) => c.id);
       const { data: existing } = await supabaseAdmin
@@ -243,52 +241,86 @@ export async function pollSources(opts?: { sourceId?: string }): Promise<PollSum
         .select("kick_clip_id")
         .in("kick_clip_id", ids);
       const seen = new Set((existing ?? []).map((r) => r.kick_clip_id));
-      const fresh = clips.filter(
-        (c) =>
-          !seen.has(c.id) &&
-          !blocked.some((kw) =>
-            kw && c.title.toLowerCase().includes(kw.toLowerCase()),
-          ),
-      );
+      const fresh = clips
+        .filter(
+          (c) =>
+            !seen.has(c.id) &&
+            !blocked.some(
+              (kw) => kw && c.title.toLowerCase().includes(kw.toLowerCase()),
+            ),
+        )
+        .slice(0, MAX_CLIPS_PER_SOURCE);
 
-      for (const clip of fresh.slice(0, 10)) {
-        const spike = await findSpikeMatch(src.id, clip.createdAt);
-        const score = await scoreClip(clip, spike, examples, apiKey);
-        if (score.virality_score < threshold) continue;
-        const { error: insErr } = await supabaseAdmin.from("clips").insert({
-          source_id: src.id,
-          kick_clip_id: clip.id,
-          kick_clip_url: clip.url,
-          video_url: clip.videoUrl,
-          thumbnail_url: clip.thumbnailUrl,
-          title: clip.title,
-          duration_seconds: clip.durationSeconds,
-          kick_view_count: clip.viewCount,
-          virality_score: score.virality_score,
-          score_breakdown: {
-            reaction: score.reaction,
-            chat: score.chat,
-            audio: score.audio,
-          },
-          hook_caption: score.hook_caption,
-          score_rationale: score.rationale,
-          chat_spike_ratio: spike?.ratio ?? null,
-          matched_velocity_id: spike?.id ?? null,
-          status: "pending",
-          stream_timestamp: clip.createdAt,
-        });
-        if (insErr) {
-          console.error("[poll] insert failed", insErr);
-        } else {
-          sourceLog.new++;
-          summary.new_clips++;
+      // Score in chunks of SCORE_CONCURRENCY
+      for (let i = 0; i < fresh.length; i += SCORE_CONCURRENCY) {
+        const chunk = fresh.slice(i, i + SCORE_CONCURRENCY);
+        const results = await Promise.allSettled(
+          chunk.map(async (clip) => {
+            const spike = await findSpikeMatch(src.id, clip.createdAt);
+            const score = await scoreClip(clip, spike, examples, apiKey);
+            return { clip, spike, score };
+          }),
+        );
+        for (const r of results) {
+          if (r.status !== "fulfilled") {
+            console.error("[poll] score chunk failed", r.reason);
+            continue;
+          }
+          const { clip, spike, score } = r.value;
+          if (score.virality_score < threshold) continue;
+          const { error: insErr } = await supabaseAdmin.from("clips").insert({
+            source_id: src.id,
+            kick_clip_id: clip.id,
+            kick_clip_url: clip.url,
+            video_url: clip.videoUrl,
+            thumbnail_url: clip.thumbnailUrl,
+            title: clip.title,
+            duration_seconds: clip.durationSeconds,
+            kick_view_count: clip.viewCount,
+            virality_score: score.virality_score,
+            score_breakdown: {
+              reaction: score.reaction,
+              chat: score.chat,
+              audio: score.audio,
+            },
+            hook_caption: score.hook_caption,
+            score_rationale: score.rationale,
+            chat_spike_ratio: spike?.ratio ?? null,
+            matched_velocity_id: spike?.id ?? null,
+            status: "pending",
+            stream_timestamp: clip.createdAt,
+          });
+          if (insErr) {
+            console.error("[poll] insert failed", insErr);
+          } else {
+            sourceLog.new++;
+          }
         }
       }
     } catch (err: any) {
       console.error(`[poll] source ${src.slug} failed`, err);
       sourceLog.error = err?.message ?? String(err);
     }
-    summary.sources.push(sourceLog);
+    return sourceLog;
+  }
+
+  // Process all sources in parallel — one slow streamer can't block others
+  const results = await Promise.allSettled(
+    (sources ?? []).map((s) => processSource(s)),
+  );
+  for (const r of results) {
+    summary.polled++;
+    if (r.status === "fulfilled") {
+      summary.sources.push(r.value);
+      summary.new_clips += r.value.new;
+    } else {
+      summary.sources.push({
+        slug: "?",
+        live: false,
+        new: 0,
+        error: String(r.reason),
+      });
+    }
   }
 
   await supabaseAdmin
