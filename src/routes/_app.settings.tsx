@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   getAgentSettings,
   updateAgentSettings,
+  getLatestTrainingExportUrl,
 } from "@/lib/agent.functions";
 
 export const Route = createFileRoute("/_app/settings")({
