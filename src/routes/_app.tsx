@@ -17,6 +17,7 @@ function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <Toaster theme="dark" position="bottom-right" />
     </div>
   );
 }
