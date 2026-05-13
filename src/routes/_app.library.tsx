@@ -43,20 +43,33 @@ function latestJob(c: Clip): RenderJob | null {
 function LibraryPage() {
   const fetchClips = useServerFn(listApprovedClips);
   const record = useServerFn(recordDownload);
-  const { data } = useQuery({
+  const retryFn = useServerFn(retryRender);
+  const { data, refetch } = useQuery({
     queryKey: ["approved-clips"],
     queryFn: () => fetchClips(),
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
   const clips: Clip[] = (data?.clips ?? []) as any;
 
+  const retryMut = useMutation({
+    mutationFn: (clipId: string) => retryFn({ data: { clipId } }),
+    onSuccess: (res: any) => {
+      if (res?.ok) toast.success("Render queued");
+      else toast.error(res?.error ?? "Render failed to queue");
+      refetch();
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Retry failed"),
+  });
+
   function downloadMp4(c: Clip) {
-    if (!c.video_url) {
-      toast.error("No MP4 URL available for this clip");
+    const job = latestJob(c);
+    const url = c.rendered_video_url ?? job?.output_url ?? c.video_url;
+    if (!url) {
+      toast.error("No MP4 available yet — render still in progress");
       return;
     }
     const a = document.createElement("a");
-    a.href = c.video_url;
+    a.href = url;
     a.download = `${(c.hook_caption ?? c.title ?? "clip")
       .replace(/[^a-z0-9-_ ]/gi, "")
       .slice(0, 60)}.mp4`;
