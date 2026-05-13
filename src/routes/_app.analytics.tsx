@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { getAnalytics } from "@/lib/agent.functions";
+import { getAnalytics, getCronHealth } from "@/lib/agent.functions";
 
 export const Route = createFileRoute("/_app/analytics")({
   component: AnalyticsPage,
@@ -9,10 +9,16 @@ export const Route = createFileRoute("/_app/analytics")({
 
 function AnalyticsPage() {
   const fetchA = useServerFn(getAnalytics);
+  const fetchCron = useServerFn(getCronHealth);
   const { data } = useQuery({
     queryKey: ["analytics"],
     queryFn: () => fetchA(),
     refetchInterval: 60_000,
+  });
+  const { data: cron } = useQuery({
+    queryKey: ["cron-health"],
+    queryFn: () => fetchCron(),
+    refetchInterval: 30_000,
   });
   const a = data ?? {
     total: 0,
