@@ -1,12 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listApprovedClips, recordDownload } from "@/lib/clips.functions";
+import { retryRender } from "@/lib/render.functions";
 
 export const Route = createFileRoute("/_app/library")({
   component: LibraryPage,
 });
+
+type RenderJob = {
+  id: string;
+  status: "pending" | "rendering" | "done" | "failed";
+  output_url: string | null;
+  error_message: string | null;
+  created_at: string;
+};
 
 type Clip = {
   id: string;
@@ -15,13 +24,21 @@ type Clip = {
   virality_score: number | null;
   thumbnail_url: string | null;
   video_url: string | null;
+  rendered_video_url: string | null;
   kick_clip_url: string | null;
   duration_seconds: number | null;
   approved_at: string | null;
   stream_timestamp: string | null;
   score_breakdown: any;
   sources: { display_name: string; slug: string } | null;
+  render_jobs: RenderJob[] | null;
 };
+
+function latestJob(c: Clip): RenderJob | null {
+  const list = c.render_jobs ?? [];
+  if (!list.length) return null;
+  return [...list].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))[0];
+}
 
 function LibraryPage() {
   const fetchClips = useServerFn(listApprovedClips);
