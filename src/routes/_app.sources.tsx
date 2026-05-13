@@ -9,6 +9,10 @@ import {
   deleteSource,
   runPollNow,
 } from "@/lib/clips.functions";
+import {
+  getLatestChatVelocity,
+  updateSourceSensitivity,
+} from "@/lib/agent.functions";
 
 export const Route = createFileRoute("/_app/sources")({
   component: SourcesPage,
