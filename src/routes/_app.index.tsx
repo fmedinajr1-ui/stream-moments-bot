@@ -42,34 +42,36 @@ function dbToCard(c: any): MockClip {
 function QueuePage() {
   const fetchClips = useServerFn(listPendingClips);
   const setStatus = useServerFn(setClipStatus);
-  const poll = useServerFn(runPollNow);
+  const fetchStatus = useServerFn(getAgentStatus);
+  const togglePause = useServerFn(setAgentPaused);
   const { data, refetch } = useQuery({
     queryKey: ["pending-clips"],
     queryFn: () => fetchClips(),
     refetchInterval: 30_000,
+  });
+  const { data: status, refetch: refetchStatus } = useQuery({
+    queryKey: ["agent-status"],
+    queryFn: () => fetchStatus(),
+    refetchInterval: 15_000,
   });
   const mutate = useMutation({
     mutationFn: (v: { id: string; status: "approved" | "rejected" }) =>
       setStatus({ data: v }),
     onSuccess: () => refetch(),
   });
-  const batchPoll = useMutation({
-    mutationFn: () => poll({ data: {} }),
-    onSuccess: (s: any) => {
-      toast.success(
-        `BATCH COMPLETE — ${s.polled} sources polled, ${s.new_clips} new clips`,
-      );
-      refetch();
+  const pauseMut = useMutation({
+    mutationFn: (paused: boolean) => togglePause({ data: { paused } }),
+    onSuccess: (_d, paused) => {
+      toast.success(paused ? "AGENT PAUSED" : "AGENT RESUMED");
+      refetchStatus();
     },
-    onError: (e: any) =>
-      toast.error(e?.message ?? "Batch failed. Check logs."),
   });
 
   const sourceClips = (data?.clips ?? []).map(dbToCard);
 
   const [streamer, setStreamer] = useState<string>("ALL");
   const [minScore, setMinScore] = useState(0);
-  const [batchMode, setBatchMode] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusIdx, setFocusIdx] = useState(0);
 
