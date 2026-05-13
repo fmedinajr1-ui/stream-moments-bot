@@ -3,12 +3,13 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { pollSources } from "@/lib/poll-kick.server";
 import { getChannel } from "@/lib/kick.server";
+import { startRenderForClip } from "@/lib/render-runner.server";
 
 export const listPendingClips = createServerFn({ method: "GET" }).handler(
   async () => {
     const { data, error } = await supabaseAdmin
       .from("clips")
-      .select("*, sources(slug, display_name)")
+      .select("*, sources(slug, display_name), render_jobs(id,status,output_url,error_message,created_at)")
       .in("status", ["pending", "processing"])
       .order("virality_score", { ascending: false })
       .limit(60);
@@ -21,7 +22,7 @@ export const listApprovedClips = createServerFn({ method: "GET" }).handler(
   async () => {
     const { data, error } = await supabaseAdmin
       .from("clips")
-      .select("*, sources(slug, display_name)")
+      .select("*, sources(slug, display_name), render_jobs(id,status,output_url,error_message,created_at)")
       .eq("status", "approved")
       .order("approved_at", { ascending: false })
       .limit(120);
@@ -57,6 +58,15 @@ export const setClipStatus = createServerFn({ method: "POST" })
     await supabaseAdmin
       .from("audit_log")
       .insert({ action: data.status, clip_id: data.id });
+
+    // Fire-and-forget: when a clip is approved, kick off the highlight render.
+    if (data.status === "approved") {
+      try {
+        await startRenderForClip(data.id);
+      } catch (err) {
+        console.error("[setClipStatus] render queue failed", err);
+      }
+    }
     return { ok: true };
   });
 

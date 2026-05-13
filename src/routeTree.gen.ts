@@ -18,6 +18,7 @@ import { Route as AppPipelineRouteImport } from './routes/_app.pipeline'
 import { Route as AppLibraryRouteImport } from './routes/_app.library'
 import { Route as AppCampaignsRouteImport } from './routes/_app.campaigns'
 import { Route as AppAnalyticsRouteImport } from './routes/_app.analytics'
+import { Route as ApiPublicHooksShotstackRouteImport } from './routes/api/public/hooks/shotstack'
 import { Route as ApiPublicCronPollKickRouteImport } from './routes/api/public/cron/poll-kick'
 import { Route as ApiPublicCronExportTrainingRouteImport } from './routes/api/public/cron/export-training'
 import { Route as ApiPublicCronChatPulseRouteImport } from './routes/api/public/cron/chat-pulse'
@@ -66,6 +67,11 @@ const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiPublicHooksShotstackRoute = ApiPublicHooksShotstackRouteImport.update({
+  id: '/api/public/hooks/shotstack',
+  path: '/api/public/hooks/shotstack',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicCronPollKickRoute = ApiPublicCronPollKickRouteImport.update({
   id: '/api/public/cron/poll-kick',
   path: '/api/public/cron/poll-kick',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
+  '/api/public/hooks/shotstack': typeof ApiPublicHooksShotstackRoute
 }
 export interface FileRoutesByTo {
   '/analytics': typeof AppAnalyticsRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
+  '/api/public/hooks/shotstack': typeof ApiPublicHooksShotstackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
+  '/api/public/hooks/shotstack': typeof ApiPublicHooksShotstackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -138,6 +147,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
+    | '/api/public/hooks/shotstack'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/analytics'
@@ -151,6 +161,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
+    | '/api/public/hooks/shotstack'
   id:
     | '__root__'
     | '/_app'
@@ -165,6 +176,7 @@ export interface FileRouteTypes {
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
+    | '/api/public/hooks/shotstack'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -172,6 +184,7 @@ export interface RootRouteChildren {
   ApiPublicCronChatPulseRoute: typeof ApiPublicCronChatPulseRoute
   ApiPublicCronExportTrainingRoute: typeof ApiPublicCronExportTrainingRoute
   ApiPublicCronPollKickRoute: typeof ApiPublicCronPollKickRoute
+  ApiPublicHooksShotstackRoute: typeof ApiPublicHooksShotstackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -239,6 +252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyticsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/public/hooks/shotstack': {
+      id: '/api/public/hooks/shotstack'
+      path: '/api/public/hooks/shotstack'
+      fullPath: '/api/public/hooks/shotstack'
+      preLoaderRoute: typeof ApiPublicHooksShotstackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/cron/poll-kick': {
       id: '/api/public/cron/poll-kick'
       path: '/api/public/cron/poll-kick'
@@ -292,7 +312,18 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicCronChatPulseRoute: ApiPublicCronChatPulseRoute,
   ApiPublicCronExportTrainingRoute: ApiPublicCronExportTrainingRoute,
   ApiPublicCronPollKickRoute: ApiPublicCronPollKickRoute,
+  ApiPublicHooksShotstackRoute: ApiPublicHooksShotstackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

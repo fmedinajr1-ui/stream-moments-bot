@@ -1,12 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listApprovedClips, recordDownload } from "@/lib/clips.functions";
+import { retryRender } from "@/lib/render.functions";
 
 export const Route = createFileRoute("/_app/library")({
   component: LibraryPage,
 });
+
+type RenderJob = {
+  id: string;
+  status: "pending" | "rendering" | "done" | "failed";
+  output_url: string | null;
+  error_message: string | null;
+  created_at: string;
+};
 
 type Clip = {
   id: string;
@@ -15,31 +24,52 @@ type Clip = {
   virality_score: number | null;
   thumbnail_url: string | null;
   video_url: string | null;
+  rendered_video_url: string | null;
   kick_clip_url: string | null;
   duration_seconds: number | null;
   approved_at: string | null;
   stream_timestamp: string | null;
   score_breakdown: any;
   sources: { display_name: string; slug: string } | null;
+  render_jobs: RenderJob[] | null;
 };
+
+function latestJob(c: Clip): RenderJob | null {
+  const list = c.render_jobs ?? [];
+  if (!list.length) return null;
+  return [...list].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))[0];
+}
 
 function LibraryPage() {
   const fetchClips = useServerFn(listApprovedClips);
   const record = useServerFn(recordDownload);
-  const { data } = useQuery({
+  const retryFn = useServerFn(retryRender);
+  const { data, refetch } = useQuery({
     queryKey: ["approved-clips"],
     queryFn: () => fetchClips(),
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
   });
   const clips: Clip[] = (data?.clips ?? []) as any;
 
+  const retryMut = useMutation({
+    mutationFn: (clipId: string) => retryFn({ data: { clipId } }),
+    onSuccess: (res: any) => {
+      if (res?.ok) toast.success("Render queued");
+      else toast.error(res?.error ?? "Render failed to queue");
+      refetch();
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Retry failed"),
+  });
+
   function downloadMp4(c: Clip) {
-    if (!c.video_url) {
-      toast.error("No MP4 URL available for this clip");
+    const job = latestJob(c);
+    const url = c.rendered_video_url ?? job?.output_url ?? c.video_url;
+    if (!url) {
+      toast.error("No MP4 available yet — render still in progress");
       return;
     }
     const a = document.createElement("a");
-    a.href = c.video_url;
+    a.href = url;
     a.download = `${(c.hook_caption ?? c.title ?? "clip")
       .replace(/[^a-z0-9-_ ]/gi, "")
       .slice(0, 60)}.mp4`;
@@ -124,63 +154,104 @@ function LibraryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {clips.map((c) => (
-            <article
-              key={c.id}
-              className="bg-panel border border-blood/40 scanlines flex flex-col"
-            >
-              <div className="relative aspect-video bg-black overflow-hidden">
-                {c.thumbnail_url ? (
-                  <img
-                    src={c.thumbnail_url}
-                    alt={c.hook_caption ?? "clip"}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-display text-4xl text-blood/40">
-                    NO THUMB
+          {clips.map((c) => {
+            const job = latestJob(c);
+            const renderState = c.rendered_video_url
+              ? "ready"
+              : (job?.status ?? "pending");
+            const badgeColor =
+              renderState === "ready" || renderState === "done"
+                ? "bg-green-700 text-white"
+                : renderState === "failed"
+                ? "bg-blood text-blood-foreground"
+                : "bg-gold text-black";
+            const badgeText =
+              renderState === "ready" || renderState === "done"
+                ? "✓ RENDERED"
+                : renderState === "rendering"
+                ? "RENDERING…"
+                : renderState === "failed"
+                ? "FAILED"
+                : "QUEUED";
+            return (
+              <article
+                key={c.id}
+                className="bg-panel border border-blood/40 scanlines flex flex-col"
+              >
+                <div className="relative aspect-video bg-black overflow-hidden">
+                  {c.thumbnail_url ? (
+                    <img
+                      src={c.thumbnail_url}
+                      alt={c.hook_caption ?? "clip"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-display text-4xl text-blood/40">
+                      NO THUMB
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 bg-blood text-blood-foreground font-mono text-xs px-2 py-0.5">
+                    {c.virality_score ?? 0}
                   </div>
-                )}
-                <div className="absolute top-2 right-2 bg-blood text-blood-foreground font-mono text-xs px-2 py-0.5">
-                  {c.virality_score ?? 0}
-                </div>
-                <div className="absolute bottom-2 left-2 font-mono text-[10px] text-muted-foreground bg-black/70 px-1.5 py-0.5">
-                  {c.duration_seconds ?? 0}s
-                </div>
-              </div>
-              <div className="p-4 flex-1 flex flex-col">
-                <div className="text-[10px] font-mono text-muted-foreground tracking-widest">
-                  @{c.sources?.slug ?? "kick"} •{" "}
-                  {c.approved_at
-                    ? new Date(c.approved_at).toLocaleDateString()
-                    : ""}
-                </div>
-                <h3 className="font-display text-lg text-foreground tracking-wide mt-1 line-clamp-2">
-                  {c.hook_caption ?? c.title ?? "UNTITLED"}
-                </h3>
-                <div className="mt-auto pt-4 grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => downloadMp4(c)}
-                    className="text-[10px] font-mono tracking-widest bg-blood text-blood-foreground py-2 hover:shadow-glow-red"
+                  <div
+                    className={`absolute top-2 left-2 font-mono text-[10px] tracking-widest px-1.5 py-0.5 ${badgeColor}`}
                   >
-                    MP4
-                  </button>
-                  <button
-                    onClick={() => copyMetadata(c)}
-                    className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
-                  >
-                    META
-                  </button>
-                  <button
-                    onClick={() => copyCapcut(c)}
-                    className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
-                  >
-                    CAPCUT
-                  </button>
+                    {badgeText}
+                  </div>
+                  <div className="absolute bottom-2 left-2 font-mono text-[10px] text-muted-foreground bg-black/70 px-1.5 py-0.5">
+                    {c.duration_seconds ?? 0}s
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="text-[10px] font-mono text-muted-foreground tracking-widest">
+                    @{c.sources?.slug ?? "kick"} •{" "}
+                    {c.approved_at
+                      ? new Date(c.approved_at).toLocaleDateString()
+                      : ""}
+                  </div>
+                  <h3 className="font-display text-lg text-foreground tracking-wide mt-1 line-clamp-2">
+                    {c.hook_caption ?? c.title ?? "UNTITLED"}
+                  </h3>
+                  {renderState === "failed" && job?.error_message && (
+                    <p className="mt-2 text-[10px] font-mono text-blood/80 line-clamp-2">
+                      {job.error_message}
+                    </p>
+                  )}
+                  <div className="mt-auto pt-4 grid grid-cols-3 gap-2">
+                    {renderState === "failed" ? (
+                      <button
+                        onClick={() => retryMut.mutate(c.id)}
+                        disabled={retryMut.isPending}
+                        className="text-[10px] font-mono tracking-widest bg-blood text-blood-foreground py-2 hover:shadow-glow-red disabled:opacity-50"
+                      >
+                        RETRY
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => downloadMp4(c)}
+                        disabled={renderState !== "ready" && renderState !== "done"}
+                        className="text-[10px] font-mono tracking-widest bg-blood text-blood-foreground py-2 hover:shadow-glow-red disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        MP4
+                      </button>
+                    )}
+                    <button
+                      onClick={() => copyMetadata(c)}
+                      className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
+                    >
+                      META
+                    </button>
+                    <button
+                      onClick={() => copyCapcut(c)}
+                      className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
+                    >
+                      CAPCUT
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
