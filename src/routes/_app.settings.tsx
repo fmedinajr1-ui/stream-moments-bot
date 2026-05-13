@@ -166,6 +166,54 @@ function SettingsPage() {
       >
         {save.isPending ? "SAVING…" : "SAVE SETTINGS"}
       </button>
+
+      <TrainingExport />
+    </div>
+  );
+}
+
+function TrainingExport() {
+  const fetchUrl = useServerFn(getLatestTrainingExportUrl);
+  const [busy, setBusy] = useState(false);
+  async function download() {
+    setBusy(true);
+    try {
+      // Trigger fresh export
+      await fetch("/api/public/cron/export-training", { method: "POST" });
+      const { url, name } = await fetchUrl();
+      if (!url) {
+        toast.error("Export not available yet — try again in a moment");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name ?? "training.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success(`Downloaded ${name}`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Export failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="bg-panel border border-gold/40 p-5 scanlines mt-6">
+      <h3 className="font-display text-xl tracking-widest text-foreground mb-2">
+        TRAINING DATA EXPORT
+      </h3>
+      <p className="text-xs font-mono text-muted-foreground mb-4">
+        Download a labelled CSV of every clip you've approved or rejected.
+        Use this to fine-tune a model later. Auto-runs nightly at 03:00 UTC.
+      </p>
+      <button
+        onClick={download}
+        disabled={busy}
+        className="px-4 py-2 text-xs font-mono tracking-widest border border-gold text-gold hover:bg-gold/10 disabled:opacity-50"
+      >
+        {busy ? "EXPORTING…" : "EXPORT + DOWNLOAD CSV"}
+      </button>
     </div>
   );
 }
