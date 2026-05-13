@@ -69,6 +69,53 @@ export const runPollNow = createServerFn({ method: "POST" })
     return summary;
   });
 
+export const getAgentStatus = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const oneHourAgo = new Date(Date.now() - 3600_000).toISOString();
+    const [{ data: sources }, { data: settings }, { data: recentPolls }, { count: scoredLastHour }] = await Promise.all([
+      supabaseAdmin.from("sources").select("id,slug,display_name,last_polled_at,last_known_live,is_monitoring"),
+      supabaseAdmin.from("agent_settings").select("is_paused").limit(1).maybeSingle(),
+      supabaseAdmin
+        .from("audit_log")
+        .select("created_at,details")
+        .eq("action", "poll_kick")
+        .order("created_at", { ascending: false })
+        .limit(1),
+      supabaseAdmin
+        .from("clips")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", oneHourAgo),
+    ]);
+    const lastPoll = recentPolls?.[0];
+    return {
+      isPaused: !!settings?.is_paused,
+      sources: sources ?? [],
+      liveCount: (sources ?? []).filter((s: any) => s.last_known_live).length,
+      monitoredCount: (sources ?? []).filter((s: any) => s.is_monitoring).length,
+      lastPollAt: lastPoll?.created_at ?? null,
+      lastPollSummary: (lastPoll?.details as any) ?? null,
+      scoredLastHour: scoredLastHour ?? 0,
+    };
+  },
+);
+
+export const setAgentPaused = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ paused: z.boolean() }).parse(d))
+  .handler(async ({ data }) => {
+    const { data: row } = await supabaseAdmin
+      .from("agent_settings")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+    if (!row) throw new Error("No agent_settings row");
+    const { error } = await supabaseAdmin
+      .from("agent_settings")
+      .update({ is_paused: data.paused, updated_at: new Date().toISOString() })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const addSource = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
