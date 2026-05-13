@@ -108,7 +108,7 @@ async function scoreClip(
 ) {
   try {
     const gateway = createLovableAiGatewayProvider(apiKey);
-    const model = gateway("google/gemini-3-flash-preview");
+    const model = gateway("google/gemini-2.5-flash");
     const spikeBlock = spike
       ? `CHAT SPIKE DETECTED at this moment: ${spike.ratio.toFixed(1)}x baseline (${spike.msgs_per_sec.toFixed(1)} msgs/sec).
 Sample chat lines:
