@@ -16,6 +16,9 @@ export type MockClip = {
   thumbnail_url: string;
   chat_spike_ratio?: number | null;
   score_rationale?: string | null;
+  render_status?: "pending" | "rendering" | "done" | "failed" | null;
+  render_error?: string | null;
+  rendered_video_url?: string | null;
 };
 
 // Public sample 9:16-friendly videos (no audio analysis needed for the mock)
