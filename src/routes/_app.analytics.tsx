@@ -67,6 +67,41 @@ function AnalyticsPage() {
       </div>
 
       <div className="bg-panel border border-blood/40 p-5 scanlines">
+        <h3 className="font-display text-xl tracking-widest mb-2">
+          CRON HEALTH — LAST 20 RUNS
+        </h3>
+        <p className="text-xs font-mono text-muted-foreground mb-3">
+          Auto-poll runs every minute. Each bar = one run. Gold = had errors.
+        </p>
+        {!cron?.runs?.length ? (
+          <div className="text-xs font-mono text-muted-foreground tracking-widest">
+            NO RUNS YET — waiting for next cron tick…
+          </div>
+        ) : (
+          <div className="flex items-end gap-1 h-16">
+            {cron.runs.slice().reverse().map((r, i) => {
+              const h = Math.max(8, Math.min(64, 8 + r.new_clips * 12));
+              const errored = r.errors > 0;
+              return (
+                <div
+                  key={i}
+                  title={`${new Date(r.at).toLocaleTimeString()} • ${r.polled} sources • ${r.new_clips} new • ${r.errors} errors`}
+                  className={`flex-1 ${errored ? "bg-gold" : "bg-blood"} opacity-80 hover:opacity-100`}
+                  style={{ height: `${h}px` }}
+                />
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-3 text-[10px] font-mono text-muted-foreground tracking-widest">
+          LAST RUN:{" "}
+          {cron?.runs?.[0]
+            ? new Date(cron.runs[0].at).toLocaleTimeString()
+            : "—"}
+        </div>
+      </div>
+
+      <div className="bg-panel border border-blood/40 p-5 scanlines">
         <h3 className="font-display text-xl tracking-widest mb-4">
           TOP SOURCES (APPROVED)
         </h3>
