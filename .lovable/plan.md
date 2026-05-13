@@ -1,77 +1,118 @@
-# Always-on auto-clipper — no manual buttons
+## Goal
 
-## What you're asking for
+When you click APPROVE on a clip in the queue, automatically:
+1. Find the source VOD on Kick
+2. Cut a 30-60s window centered on the chat-spike timestamp
+3. Crop to 9:16 (1080x1920) and burn in the AI hook caption on the first 3s
+4. Store the final MP4 in Lovable Cloud and expose a download button
 
-> "Check live pages all day from the handles and constantly watch for clip-worthy moments."
+## Critical constraint
 
-That's exactly what the cron jobs are supposed to do. The problem is the system was leaning on the manual **RUN BATCH NOW** button (which is what timed out with "Load failed"). The cron itself is fine — it just needs to be made bulletproof so you never have to touch a button.
+ffmpeg cannot run on Lovable's serverless runtime (no native binaries). All video work must be delegated to an external render API. Plan uses **Shotstack** (well-documented JSON edit API, async render + webhook).
 
-## Honest reality check (so expectations match)
+## Architecture
 
-This stack runs on serverless workers (30s max per run). It cannot literally "watch the video stream." What it CAN do, fully automatically, every minute, all day:
+```text
+APPROVE click
+   │
+   ▼
+setClipStatus('approved')
+   │
+   ▼
+queueRender(clipId)  ──►  render_jobs row (status=pending)
+   │
+   ▼
+kickVodLookup(slug, stream_timestamp)
+   │  resolves: vod_url + offset_seconds
+   ▼
+shotstack.render({ source, trim, crop, caption })
+   │  returns render_id
+   ▼
+render_jobs.status = 'rendering', shotstack_id stored
+   │
+   ▼  (Shotstack webhook ~30-90s later)
+POST /api/public/hooks/shotstack
+   │
+   ▼
+download MP4 → upload to Storage('clips/{clip_id}.mp4')
+   │
+   ▼
+clips.video_url = signed_url, render_jobs.status = 'done'
+   │
+   ▼  Realtime push → queue card shows DOWNLOAD button
+```
 
-1. **Every 30s** — pull last 30s of chat from each live handle, compute msgs/sec, detect spikes vs baseline → save to `chat_velocity`
-2. **Every 60s** — for each handle: check live status, fetch any new Kick auto-clips, match each clip's timestamp to nearby chat spikes, AI-score it with your past approve/reject history as taste examples, drop scoring ≥ threshold into your Queue as `pending`
+## Database changes
 
-So "watching all day" = polling chat every 30s + checking for new clips every 60s + AI-scoring them with your taste. The clips themselves come from Kick's own auto-clip system (Kick generates them when something pops off — viewers clipping, hype moments, etc.).
+New table `render_jobs`:
+- `clip_id` (fk to clips)
+- `status` (pending | rendering | done | failed)
+- `provider` ('shotstack')
+- `provider_render_id`
+- `vod_url`, `start_offset_sec`, `duration_sec`
+- `output_url` (final signed Supabase Storage URL)
+- `error_message`
+- `created_at`, `completed_at`
 
-If you want literal video watching (audio energy, face detection, OCR on stream) we need an always-on box outside Lovable. Not happening in this project.
+New storage bucket `clips` (private, signed-URL access).
 
-## What I'll change
+Extend `clips` table: add `rendered_video_url` (text, nullable) — distinct from the existing `video_url` which holds the raw Kick clip URL.
 
-### 1. Make the polling cron actually reliable (the real fix for "Load failed")
-In `src/lib/poll-kick.server.ts`:
-- **Parallelize per-source**: process all sources concurrently with `Promise.allSettled` (one slow streamer can't block others)
-- **Parallelize per-clip**: score clips for a single source in parallel, capped at 5 concurrent
-- **Per-AI-call timeout**: wrap each Gemini call in `AbortSignal.timeout(10_000)` → falls back to heuristic score if slow
-- **Cap clips per cycle**: max 5 new clips scored per source per minute (Kick rarely produces more than 1-2 anyway)
-- **Skip offline sources**: if `getChannel()` returns `isLive: false`, skip clip fetch entirely
-- **Don't crash the run on a single error**: every per-source/per-clip step wrapped in try/catch with logged result
+## Files to create
 
-This turns a fragile 60-120s sequential run into a resilient ~5s parallel run. Crons stop silently failing.
+- `src/lib/shotstack.server.ts` — wrapper around Shotstack render + status APIs
+- `src/lib/kick-vod.server.ts` — given a source slug + stream timestamp, find the VOD URL and compute the offset (uses Kick's `/channels/{slug}/videos` endpoint, picks the VOD whose `created_at <= stream_timestamp <= created_at + duration`)
+- `src/lib/render.functions.ts` — `queueRender`, `getRenderStatus`, `retryRender` server functions
+- `src/routes/api/public/hooks/shotstack.ts` — webhook receiver, signature-verified, downloads MP4 and uploads to Storage
 
-### 2. Verify crons are actually scheduled and running
-- Check `cron.job` to confirm `chat-pulse` (every 30s) and `poll-kick` (every 60s) are active
-- If missing, re-register them with `pg_cron` pointing at the stable URL `project--{id}.lovable.app/api/public/cron/poll-kick` and `/api/public/cron/chat-pulse`
-- Add a `cron.job_run_details` query into the Analytics page so you can SEE the cron running (last 20 runs, success/fail, duration)
+## Files to edit
 
-### 3. Remove the manual buttons that confused you
-In `src/routes/_app.index.tsx` (and wherever else):
-- **Delete** "RUN BATCH NOW" button (caused the load-failed)
-- **Delete** "BATCH MODE" toggle (it was just bulk-approve UI for the queue)
-- Replace with a small **"AUTO-MONITORING · ON"** status indicator showing:
-  - Last cron tick time (e.g. "polled 23s ago")
-  - # of live sources right now
-  - # of clips scored in last hour
-  - Single **PAUSE AGENT** toggle (writes to existing `agent_settings.is_paused`)
+- `src/lib/clips.functions.ts` — `setClipStatus` calls `queueRender` when status flips to `approved` and there is no existing successful render
+- `src/components/clip-card.tsx` — show render badge (PENDING / RENDERING / READY / FAILED), DOWNLOAD button when ready, RETRY button when failed
+- `src/routes/_app.index.tsx` — subscribe to `render_jobs` realtime channel, refresh card on update
 
-That's it. No buttons to press. You just open the Queue and approve/reject what the agent surfaces.
+## Trim window logic
 
-### 4. Keep bulk-approve in the Queue (it's useful)
-The multi-select checkboxes on the Queue page stay — they're for *your* workflow when 10 clips are waiting. Just no longer called "BATCH MODE" — labeled **SELECT MULTIPLE** with a checkbox column.
+- Default: `start = stream_timestamp - 25s`, `duration = 45s`
+- If `chat_spike_ratio` exists and a `chat_velocity` row matched, center on the spike's `created_at` instead
+- Clamp duration to 15-60s; clamp start ≥ VOD start
 
-## Files touched
+## Render edit (Shotstack JSON, summary)
 
-**Edited:**
-- `src/lib/poll-kick.server.ts` — parallelize, timeouts, resilient error handling
-- `src/routes/_app.index.tsx` — remove manual run button, add live cron status panel
-- `src/components/clip-card.tsx` / queue page — rename "BATCH MODE" → "SELECT MULTIPLE"
-- `src/routes/_app.analytics.tsx` — add "Cron Health" panel showing last 20 runs
+- Input: VOD HLS URL with `trim` start + length
+- Filter: `crop` to centered 9:16 (1080x1920)
+- Overlay: text track for first 3s with `hook_caption`, bold, drop shadow, bottom-third
+- Output: mp4, 1080x1920, 30fps
 
-**No new files. No DB schema changes.** Only data change: re-register the two cron jobs if they aren't currently active (one-shot SQL via `cron.schedule`).
+## Secrets needed
 
-## How you'll verify it's working after the change
+Will request via `add_secret` during implementation:
+- `SHOTSTACK_API_KEY` (from shotstack.io/dashboard)
+- `SHOTSTACK_WEBHOOK_SECRET` (any random string; configured in Shotstack dashboard)
 
-1. Add a Kick handle on **Sources** → wait 60s
-2. Open **Home** → see "Last poll: 14s ago · 1 live source · 0 clips scored (no new auto-clips on Kick yet)"
-3. Open **Analytics → Cron Health** → see green ticks every 30s/60s
-4. When the streamer pops off and Kick auto-generates a clip → within ~60s it appears in the Queue with score + spike badge + AI rationale
-5. You never click anything except APPROVE / REJECT on cards
+## Failure handling
 
-## What this does NOT solve (be clear)
+- VOD lookup fails (stream not yet archived) → `render_jobs.status = 'failed'`, error "VOD not yet available, retry in ~10 min". UI shows RETRY button.
+- Shotstack render fails → status 'failed' with provider error message.
+- Webhook timeout (>15 min) → `render-watchdog` cron every 5 min polls Shotstack for stuck jobs.
 
-- Won't generate clips Kick itself didn't generate. If a streamer has clips disabled, we have nothing to pull.
-- Won't watch video/audio content. Spike detection is chat-based only.
-- 60s lag minimum between a moment happening and it appearing in your queue.
+## Cost & latency expectations
 
-If any of those three matter, the answer is the heavy plan with an always-on VPS — that's outside Lovable's scope.
+- ~$0.30 per approved clip on Shotstack
+- 30-90s from APPROVE → DOWNLOAD button live
+- Storage: ~5MB per 45s 1080x1920 clip
+
+## Verification steps
+
+1. Approve a clip whose source has an archived VOD → within 2 min a DOWNLOAD button appears, MP4 downloads as 1080x1920 with caption burned in on first 3s
+2. Approve a clip from a still-live stream (no VOD yet) → render_jobs marked failed with clear message, RETRY works after VOD posts
+3. Reject a clip → no render queued (no cost)
+4. Webhook receives bad signature → 401, no DB write
+5. Re-approve an already-rendered clip → no duplicate render, existing URL reused
+
+## Out of scope (intentional)
+
+- Live HLS capture (needs always-on VPS)
+- Auto-publish to TikTok/IG/YT (separate feature)
+- Multi-segment edits / B-roll
+- Custom caption styling per template (uses one default style)
