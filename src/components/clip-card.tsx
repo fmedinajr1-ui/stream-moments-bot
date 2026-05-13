@@ -136,6 +136,17 @@ export function ClipCard({
           </div>
         </div>
 
+        {clip.chat_spike_ratio ? (
+          <div className="text-[10px] font-mono text-blood tracking-widest border border-blood/40 px-2 py-1 inline-block">
+            🔥 CHAT SPIKE {clip.chat_spike_ratio.toFixed(1)}x BASELINE
+          </div>
+        ) : null}
+        {clip.score_rationale ? (
+          <div className="text-[11px] font-mono text-muted-foreground italic border-l-2 border-gold/40 pl-2">
+            {clip.score_rationale}
+          </div>
+        ) : null}
+
         {editing ? (
           <input
             autoFocus
