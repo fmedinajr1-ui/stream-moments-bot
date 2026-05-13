@@ -176,7 +176,7 @@ export type PollSummary = {
 };
 
 export async function pollSources(opts?: { sourceId?: string }): Promise<PollSummary> {
-  const apiKey = process.env.LOVABLE_API_KEY;
+  const apiKey: string = process.env.LOVABLE_API_KEY ?? "";
   if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
 
   let q = supabaseAdmin.from("sources").select("*").eq("is_monitoring", true);
