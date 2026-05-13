@@ -80,6 +80,11 @@ export const getAnalytics = createServerFn({ method: "GET" }).handler(
     const top = Object.entries(bySource)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
+    const spikeMatched = (list as any[]).filter(
+      (c) => c.status === "approved" && c.chat_spike_ratio,
+    ).length;
+    const spikeApprovalRate =
+      approved === 0 ? 0 : Math.round((spikeMatched / approved) * 100);
     return {
       total,
       approved,
@@ -87,6 +92,58 @@ export const getAnalytics = createServerFn({ method: "GET" }).handler(
       pending,
       avgScore,
       topSources: top,
+      spikeApprovalRate,
+      spikeMatched,
     };
   },
 );
+
+export const getLatestChatVelocity = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const { data } = await supabaseAdmin
+      .from("chat_velocity")
+      .select("source_id, msgs_per_sec, spike_ratio, is_spike, created_at")
+      .gte("created_at", new Date(Date.now() - 5 * 60_000).toISOString())
+      .order("created_at", { ascending: false });
+    const bySource: Record<string, any> = {};
+    for (const r of data ?? []) {
+      if (!bySource[r.source_id]) bySource[r.source_id] = r;
+    }
+    return { latest: bySource };
+  },
+);
+
+export const updateSourceSensitivity = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        spike_sensitivity: z.number().min(1.2).max(5),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { error } = await supabaseAdmin
+      .from("sources")
+      .update({ spike_sensitivity: data.spike_sensitivity })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const getLatestTrainingExportUrl = createServerFn({
+  method: "GET",
+}).handler(async () => {
+  const { data } = await supabaseAdmin.storage
+    .from("training-data")
+    .list("exports", {
+      limit: 1,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+  const file = data?.[0];
+  if (!file) return { url: null, name: null };
+  const { data: signed } = await supabaseAdmin.storage
+    .from("training-data")
+    .createSignedUrl(`exports/${file.name}`, 600);
+  return { url: signed?.signedUrl ?? null, name: file.name };
+});

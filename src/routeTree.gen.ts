@@ -19,6 +19,8 @@ import { Route as AppLibraryRouteImport } from './routes/_app.library'
 import { Route as AppCampaignsRouteImport } from './routes/_app.campaigns'
 import { Route as AppAnalyticsRouteImport } from './routes/_app.analytics'
 import { Route as ApiPublicCronPollKickRouteImport } from './routes/api/public/cron/poll-kick'
+import { Route as ApiPublicCronExportTrainingRouteImport } from './routes/api/public/cron/export-training'
+import { Route as ApiPublicCronChatPulseRouteImport } from './routes/api/public/cron/chat-pulse'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -69,6 +71,17 @@ const ApiPublicCronPollKickRoute = ApiPublicCronPollKickRouteImport.update({
   path: '/api/public/cron/poll-kick',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCronExportTrainingRoute =
+  ApiPublicCronExportTrainingRouteImport.update({
+    id: '/api/public/cron/export-training',
+    path: '/api/public/cron/export-training',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicCronChatPulseRoute = ApiPublicCronChatPulseRouteImport.update({
+  id: '/api/public/cron/chat-pulse',
+  path: '/api/public/cron/chat-pulse',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -79,6 +92,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
+  '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
+  '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
 }
 export interface FileRoutesByTo {
@@ -90,6 +105,8 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
   '/': typeof AppIndexRoute
+  '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
+  '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
 }
 export interface FileRoutesById {
@@ -103,6 +120,8 @@ export interface FileRoutesById {
   '/_app/sources': typeof AppSourcesRoute
   '/_app/template': typeof AppTemplateRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
+  '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
 }
 export interface FileRouteTypes {
@@ -116,6 +135,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/template'
+    | '/api/public/cron/chat-pulse'
+    | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -127,6 +148,8 @@ export interface FileRouteTypes {
     | '/sources'
     | '/template'
     | '/'
+    | '/api/public/cron/chat-pulse'
+    | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
   id:
     | '__root__'
@@ -139,11 +162,15 @@ export interface FileRouteTypes {
     | '/_app/sources'
     | '/_app/template'
     | '/_app/'
+    | '/api/public/cron/chat-pulse'
+    | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  ApiPublicCronChatPulseRoute: typeof ApiPublicCronChatPulseRoute
+  ApiPublicCronExportTrainingRoute: typeof ApiPublicCronExportTrainingRoute
   ApiPublicCronPollKickRoute: typeof ApiPublicCronPollKickRoute
 }
 
@@ -219,6 +246,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronPollKickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/export-training': {
+      id: '/api/public/cron/export-training'
+      path: '/api/public/cron/export-training'
+      fullPath: '/api/public/cron/export-training'
+      preLoaderRoute: typeof ApiPublicCronExportTrainingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/cron/chat-pulse': {
+      id: '/api/public/cron/chat-pulse'
+      path: '/api/public/cron/chat-pulse'
+      fullPath: '/api/public/cron/chat-pulse'
+      preLoaderRoute: typeof ApiPublicCronChatPulseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -248,6 +289,8 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  ApiPublicCronChatPulseRoute: ApiPublicCronChatPulseRoute,
+  ApiPublicCronExportTrainingRoute: ApiPublicCronExportTrainingRoute,
   ApiPublicCronPollKickRoute: ApiPublicCronPollKickRoute,
 }
 export const routeTree = rootRouteImport

@@ -33,6 +33,8 @@ function dbToCard(c: any): MockClip {
     duration_seconds: c.duration_seconds ?? 0,
     video_url: c.video_url ?? "",
     thumbnail_url: c.thumbnail_url ?? "",
+    chat_spike_ratio: c.chat_spike_ratio ?? null,
+    score_rationale: c.score_rationale ?? null,
   };
 }
 
