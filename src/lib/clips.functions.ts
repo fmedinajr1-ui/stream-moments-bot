@@ -9,10 +9,10 @@ export const listPendingClips = createServerFn({ method: "GET" }).handler(
   async () => {
     const { data, error } = await supabaseAdmin
       .from("clips")
-      .select("*, sources(slug, display_name)")
-      .in("status", ["pending", "processing"])
+      .select("*, sources(slug, display_name), render_jobs(id,status,output_url,error_message,created_at)")
+      .in("status", ["pending", "processing", "approved"])
       .order("virality_score", { ascending: false })
-      .limit(60);
+      .limit(80);
     if (error) throw new Error(error.message);
     return { clips: data ?? [] };
   },
