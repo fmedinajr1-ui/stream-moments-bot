@@ -148,7 +148,35 @@ function SourcesPage() {
               <Row label="FOLLOWERS" v={s.follower_count?.toLocaleString() ?? "—"} />
               <Row label="AVG VIEWERS" v={s.avg_viewers?.toLocaleString() ?? "—"} />
               <Row label="LAST POLL" v={timeAgo(s.last_polled_at)} />
+              <Row
+                label="CHAT MSGS/SEC"
+                v={
+                  vel?.latest?.[s.id]
+                    ? `${Number(vel.latest[s.id].msgs_per_sec).toFixed(1)} (${Number(vel.latest[s.id].spike_ratio).toFixed(1)}x)${vel.latest[s.id].is_spike ? " 🔥" : ""}`
+                    : "—"
+                }
+              />
             </dl>
+            <div className="mt-3">
+              <div className="flex justify-between text-[10px] font-mono mb-1">
+                <span className="text-muted-foreground tracking-widest">SPIKE SENSITIVITY</span>
+                <span className="text-gold">{(s.spike_sensitivity ?? 2.0).toFixed(1)}x</span>
+              </div>
+              <input
+                type="range"
+                min={1.5}
+                max={4}
+                step={0.1}
+                value={s.spike_sensitivity ?? 2.0}
+                onChange={(e) =>
+                  sensMut.mutate({
+                    id: s.id,
+                    spike_sensitivity: Number(e.target.value),
+                  })
+                }
+                className="w-full accent-blood"
+              />
+            </div>
             <div className="mt-4 flex items-center justify-between">
               <span className="text-[10px] font-mono text-muted-foreground tracking-widest">
                 MONITORING
