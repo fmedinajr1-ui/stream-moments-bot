@@ -22,6 +22,7 @@ import { Route as ApiPublicHooksShotstackRouteImport } from './routes/api/public
 import { Route as ApiPublicCronPollKickRouteImport } from './routes/api/public/cron/poll-kick'
 import { Route as ApiPublicCronExportTrainingRouteImport } from './routes/api/public/cron/export-training'
 import { Route as ApiPublicCronChatPulseRouteImport } from './routes/api/public/cron/chat-pulse'
+import { Route as ApiPublicCronBackfillRouteImport } from './routes/api/public/cron/backfill'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -88,6 +89,11 @@ const ApiPublicCronChatPulseRoute = ApiPublicCronChatPulseRouteImport.update({
   path: '/api/public/cron/chat-pulse',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicCronBackfillRoute = ApiPublicCronBackfillRouteImport.update({
+  id: '/api/public/cron/backfill',
+  path: '/api/public/cron/backfill',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
+  '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
   '/': typeof AppIndexRoute
+  '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/_app/sources': typeof AppSourcesRoute
   '/_app/template': typeof AppTemplateRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
   '/api/public/cron/poll-kick': typeof ApiPublicCronPollKickRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/template'
+    | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/sources'
     | '/template'
     | '/'
+    | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/_app/sources'
     | '/_app/template'
     | '/_app/'
+    | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
     | '/api/public/cron/poll-kick'
@@ -181,6 +193,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  ApiPublicCronBackfillRoute: typeof ApiPublicCronBackfillRoute
   ApiPublicCronChatPulseRoute: typeof ApiPublicCronChatPulseRoute
   ApiPublicCronExportTrainingRoute: typeof ApiPublicCronExportTrainingRoute
   ApiPublicCronPollKickRoute: typeof ApiPublicCronPollKickRoute
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCronChatPulseRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/cron/backfill': {
+      id: '/api/public/cron/backfill'
+      path: '/api/public/cron/backfill'
+      fullPath: '/api/public/cron/backfill'
+      preLoaderRoute: typeof ApiPublicCronBackfillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -309,6 +329,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  ApiPublicCronBackfillRoute: ApiPublicCronBackfillRoute,
   ApiPublicCronChatPulseRoute: ApiPublicCronChatPulseRoute,
   ApiPublicCronExportTrainingRoute: ApiPublicCronExportTrainingRoute,
   ApiPublicCronPollKickRoute: ApiPublicCronPollKickRoute,
