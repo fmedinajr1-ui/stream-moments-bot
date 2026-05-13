@@ -28,6 +28,7 @@ type Source = {
   avg_viewers: number | null;
   last_known_live: boolean;
   last_polled_at: string | null;
+  spike_sensitivity: number | null;
 };
 
 function timeAgo(iso: string | null) {
