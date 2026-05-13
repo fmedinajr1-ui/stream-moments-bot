@@ -21,6 +21,8 @@ function AnalyticsPage() {
     pending: 0,
     avgScore: 0,
     topSources: [] as [string, number][],
+    spikeApprovalRate: 0,
+    spikeMatched: 0,
   };
 
   const max = Math.max(1, ...a.topSources.map(([, v]) => v));
@@ -40,6 +42,22 @@ function AnalyticsPage() {
         <Stat label="REJECTED" value={a.rejected} />
         <Stat label="PENDING" value={a.pending} />
         <Stat label="AVG SCORE" value={a.avgScore} accent />
+      </div>
+
+      <div className="bg-panel border border-gold/40 p-5 scanlines">
+        <h3 className="font-display text-xl tracking-widest mb-2">
+          🔥 CHAT SPIKE LEARNING
+        </h3>
+        <p className="text-xs font-mono text-muted-foreground mb-3">
+          {a.spikeMatched} of {a.approved} approved clips landed during a chat spike
+          ({a.spikeApprovalRate}%). Higher = the agent's spike detection matches your taste.
+        </p>
+        <div className="h-2 bg-background border border-gold/40">
+          <div
+            className="h-full bg-gold"
+            style={{ width: `${a.spikeApprovalRate}%` }}
+          />
+        </div>
       </div>
 
       <div className="bg-panel border border-blood/40 p-5 scanlines">
