@@ -6,7 +6,8 @@ import type { MockClip } from "@/lib/mock-clips";
 import {
   listPendingClips,
   setClipStatus,
-  runPollNow,
+  getAgentStatus,
+  setAgentPaused,
 } from "@/lib/clips.functions";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
