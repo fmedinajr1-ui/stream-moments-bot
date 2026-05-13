@@ -154,63 +154,104 @@ function LibraryPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {clips.map((c) => (
-            <article
-              key={c.id}
-              className="bg-panel border border-blood/40 scanlines flex flex-col"
-            >
-              <div className="relative aspect-video bg-black overflow-hidden">
-                {c.thumbnail_url ? (
-                  <img
-                    src={c.thumbnail_url}
-                    alt={c.hook_caption ?? "clip"}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center font-display text-4xl text-blood/40">
-                    NO THUMB
+          {clips.map((c) => {
+            const job = latestJob(c);
+            const renderState = c.rendered_video_url
+              ? "ready"
+              : (job?.status ?? "pending");
+            const badgeColor =
+              renderState === "ready" || renderState === "done"
+                ? "bg-green-700 text-white"
+                : renderState === "failed"
+                ? "bg-blood text-blood-foreground"
+                : "bg-gold text-black";
+            const badgeText =
+              renderState === "ready" || renderState === "done"
+                ? "✓ RENDERED"
+                : renderState === "rendering"
+                ? "RENDERING…"
+                : renderState === "failed"
+                ? "FAILED"
+                : "QUEUED";
+            return (
+              <article
+                key={c.id}
+                className="bg-panel border border-blood/40 scanlines flex flex-col"
+              >
+                <div className="relative aspect-video bg-black overflow-hidden">
+                  {c.thumbnail_url ? (
+                    <img
+                      src={c.thumbnail_url}
+                      alt={c.hook_caption ?? "clip"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-display text-4xl text-blood/40">
+                      NO THUMB
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 bg-blood text-blood-foreground font-mono text-xs px-2 py-0.5">
+                    {c.virality_score ?? 0}
                   </div>
-                )}
-                <div className="absolute top-2 right-2 bg-blood text-blood-foreground font-mono text-xs px-2 py-0.5">
-                  {c.virality_score ?? 0}
-                </div>
-                <div className="absolute bottom-2 left-2 font-mono text-[10px] text-muted-foreground bg-black/70 px-1.5 py-0.5">
-                  {c.duration_seconds ?? 0}s
-                </div>
-              </div>
-              <div className="p-4 flex-1 flex flex-col">
-                <div className="text-[10px] font-mono text-muted-foreground tracking-widest">
-                  @{c.sources?.slug ?? "kick"} •{" "}
-                  {c.approved_at
-                    ? new Date(c.approved_at).toLocaleDateString()
-                    : ""}
-                </div>
-                <h3 className="font-display text-lg text-foreground tracking-wide mt-1 line-clamp-2">
-                  {c.hook_caption ?? c.title ?? "UNTITLED"}
-                </h3>
-                <div className="mt-auto pt-4 grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => downloadMp4(c)}
-                    className="text-[10px] font-mono tracking-widest bg-blood text-blood-foreground py-2 hover:shadow-glow-red"
+                  <div
+                    className={`absolute top-2 left-2 font-mono text-[10px] tracking-widest px-1.5 py-0.5 ${badgeColor}`}
                   >
-                    MP4
-                  </button>
-                  <button
-                    onClick={() => copyMetadata(c)}
-                    className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
-                  >
-                    META
-                  </button>
-                  <button
-                    onClick={() => copyCapcut(c)}
-                    className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
-                  >
-                    CAPCUT
-                  </button>
+                    {badgeText}
+                  </div>
+                  <div className="absolute bottom-2 left-2 font-mono text-[10px] text-muted-foreground bg-black/70 px-1.5 py-0.5">
+                    {c.duration_seconds ?? 0}s
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+                <div className="p-4 flex-1 flex flex-col">
+                  <div className="text-[10px] font-mono text-muted-foreground tracking-widest">
+                    @{c.sources?.slug ?? "kick"} •{" "}
+                    {c.approved_at
+                      ? new Date(c.approved_at).toLocaleDateString()
+                      : ""}
+                  </div>
+                  <h3 className="font-display text-lg text-foreground tracking-wide mt-1 line-clamp-2">
+                    {c.hook_caption ?? c.title ?? "UNTITLED"}
+                  </h3>
+                  {renderState === "failed" && job?.error_message && (
+                    <p className="mt-2 text-[10px] font-mono text-blood/80 line-clamp-2">
+                      {job.error_message}
+                    </p>
+                  )}
+                  <div className="mt-auto pt-4 grid grid-cols-3 gap-2">
+                    {renderState === "failed" ? (
+                      <button
+                        onClick={() => retryMut.mutate(c.id)}
+                        disabled={retryMut.isPending}
+                        className="text-[10px] font-mono tracking-widest bg-blood text-blood-foreground py-2 hover:shadow-glow-red disabled:opacity-50"
+                      >
+                        RETRY
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => downloadMp4(c)}
+                        disabled={renderState !== "ready" && renderState !== "done"}
+                        className="text-[10px] font-mono tracking-widest bg-blood text-blood-foreground py-2 hover:shadow-glow-red disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        MP4
+                      </button>
+                    )}
+                    <button
+                      onClick={() => copyMetadata(c)}
+                      className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
+                    >
+                      META
+                    </button>
+                    <button
+                      onClick={() => copyCapcut(c)}
+                      className="text-[10px] font-mono tracking-widest border border-blood/60 text-foreground py-2 hover:bg-blood/10"
+                    >
+                      CAPCUT
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
