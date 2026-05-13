@@ -43,7 +43,20 @@ function timeAgo(iso: string | null) {
 function SourcesPage() {
   const add = useServerFn(addSource);
   const del = useServerFn(deleteSource);
-  const poll = useServerFn(runPollNow);
+  const fetchVel = useServerFn(getLatestChatVelocity);
+  const setSens = useServerFn(updateSourceSensitivity);
+
+  const { data: vel } = useQuery({
+    queryKey: ["chat-velocity"],
+    queryFn: () => fetchVel(),
+    refetchInterval: 15_000,
+  });
+  const sensMut = useMutation({
+    mutationFn: (v: { id: string; spike_sensitivity: number }) =>
+      setSens({ data: v }),
+    onSuccess: () => refetch(),
+  });
+
 
   const { data, refetch } = useQuery({
     queryKey: ["sources"],
