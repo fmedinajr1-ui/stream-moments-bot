@@ -156,6 +156,7 @@ export type Database = {
           kick_view_count: number | null
           matched_velocity_id: string | null
           platforms: Json
+          rendered_video_url: string | null
           score_breakdown: Json | null
           score_rationale: string | null
           source_id: string | null
@@ -178,6 +179,7 @@ export type Database = {
           kick_view_count?: number | null
           matched_velocity_id?: string | null
           platforms?: Json
+          rendered_video_url?: string | null
           score_breakdown?: Json | null
           score_rationale?: string | null
           source_id?: string | null
@@ -200,6 +202,7 @@ export type Database = {
           kick_view_count?: number | null
           matched_velocity_id?: string | null
           platforms?: Json
+          rendered_video_url?: string | null
           score_breakdown?: Json | null
           score_rationale?: string | null
           source_id?: string | null
@@ -242,6 +245,59 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "download_history_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "clips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      render_jobs: {
+        Row: {
+          clip_id: string
+          completed_at: string | null
+          created_at: string
+          duration_sec: number | null
+          error_message: string | null
+          id: string
+          output_url: string | null
+          provider: string
+          provider_render_id: string | null
+          start_offset_sec: number | null
+          status: string
+          vod_url: string | null
+        }
+        Insert: {
+          clip_id: string
+          completed_at?: string | null
+          created_at?: string
+          duration_sec?: number | null
+          error_message?: string | null
+          id?: string
+          output_url?: string | null
+          provider?: string
+          provider_render_id?: string | null
+          start_offset_sec?: number | null
+          status?: string
+          vod_url?: string | null
+        }
+        Update: {
+          clip_id?: string
+          completed_at?: string | null
+          created_at?: string
+          duration_sec?: number | null
+          error_message?: string | null
+          id?: string
+          output_url?: string | null
+          provider?: string
+          provider_render_id?: string | null
+          start_offset_sec?: number | null
+          status?: string
+          vod_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "render_jobs_clip_id_fkey"
             columns: ["clip_id"]
             isOneToOne: false
             referencedRelation: "clips"
