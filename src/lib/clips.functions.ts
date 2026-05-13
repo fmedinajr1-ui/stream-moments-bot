@@ -22,7 +22,7 @@ export const listApprovedClips = createServerFn({ method: "GET" }).handler(
   async () => {
     const { data, error } = await supabaseAdmin
       .from("clips")
-      .select("*, sources(slug, display_name)")
+      .select("*, sources(slug, display_name), render_jobs(id,status,output_url,error_message,created_at)")
       .eq("status", "approved")
       .order("approved_at", { ascending: false })
       .limit(120);
