@@ -106,36 +106,47 @@ export type Database = {
       }
       chat_velocity: {
         Row: {
-          clip_id: string
-          msgs_per_sec: number | null
+          baseline_msgs_per_sec: number | null
+          clip_id: string | null
+          created_at: string
+          id: string
+          is_spike: boolean
+          msgs_per_sec: number
           peak_window: string | null
           sample_messages: Json | null
+          source_id: string
+          spike_ratio: number | null
         }
         Insert: {
-          clip_id: string
-          msgs_per_sec?: number | null
+          baseline_msgs_per_sec?: number | null
+          clip_id?: string | null
+          created_at?: string
+          id?: string
+          is_spike?: boolean
+          msgs_per_sec: number
           peak_window?: string | null
           sample_messages?: Json | null
+          source_id: string
+          spike_ratio?: number | null
         }
         Update: {
-          clip_id?: string
-          msgs_per_sec?: number | null
+          baseline_msgs_per_sec?: number | null
+          clip_id?: string | null
+          created_at?: string
+          id?: string
+          is_spike?: boolean
+          msgs_per_sec?: number
           peak_window?: string | null
           sample_messages?: Json | null
+          source_id?: string
+          spike_ratio?: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "chat_velocity_clip_id_fkey"
-            columns: ["clip_id"]
-            isOneToOne: true
-            referencedRelation: "clips"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       clips: {
         Row: {
           approved_at: string | null
+          chat_spike_ratio: number | null
           created_at: string
           duration_seconds: number | null
           hook_caption: string | null
@@ -143,8 +154,10 @@ export type Database = {
           kick_clip_id: string | null
           kick_clip_url: string | null
           kick_view_count: number | null
+          matched_velocity_id: string | null
           platforms: Json
           score_breakdown: Json | null
+          score_rationale: string | null
           source_id: string | null
           status: string
           stream_timestamp: string | null
@@ -155,6 +168,7 @@ export type Database = {
         }
         Insert: {
           approved_at?: string | null
+          chat_spike_ratio?: number | null
           created_at?: string
           duration_seconds?: number | null
           hook_caption?: string | null
@@ -162,8 +176,10 @@ export type Database = {
           kick_clip_id?: string | null
           kick_clip_url?: string | null
           kick_view_count?: number | null
+          matched_velocity_id?: string | null
           platforms?: Json
           score_breakdown?: Json | null
+          score_rationale?: string | null
           source_id?: string | null
           status?: string
           stream_timestamp?: string | null
@@ -174,6 +190,7 @@ export type Database = {
         }
         Update: {
           approved_at?: string | null
+          chat_spike_ratio?: number | null
           created_at?: string
           duration_seconds?: number | null
           hook_caption?: string | null
@@ -181,8 +198,10 @@ export type Database = {
           kick_clip_id?: string | null
           kick_clip_url?: string | null
           kick_view_count?: number | null
+          matched_velocity_id?: string | null
           platforms?: Json
           score_breakdown?: Json | null
+          score_rationale?: string | null
           source_id?: string | null
           status?: string
           stream_timestamp?: string | null
@@ -242,6 +261,7 @@ export type Database = {
           last_polled_at: string | null
           poll_interval_min: number
           slug: string
+          spike_sensitivity: number
         }
         Insert: {
           avg_viewers?: number | null
@@ -254,6 +274,7 @@ export type Database = {
           last_polled_at?: string | null
           poll_interval_min?: number
           slug: string
+          spike_sensitivity?: number
         }
         Update: {
           avg_viewers?: number | null
@@ -266,6 +287,7 @@ export type Database = {
           last_polled_at?: string | null
           poll_interval_min?: number
           slug?: string
+          spike_sensitivity?: number
         }
         Relationships: []
       }
