@@ -3,7 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { pollSources } from "@/lib/poll-kick.server";
 import { getChannel } from "@/lib/kick.server";
-import { _internalStartRender } from "@/lib/render.functions";
+import { startRenderForClip } from "@/lib/render-runner.server";
 
 export const listPendingClips = createServerFn({ method: "GET" }).handler(
   async () => {
@@ -62,7 +62,7 @@ export const setClipStatus = createServerFn({ method: "POST" })
     // Fire-and-forget: when a clip is approved, kick off the highlight render.
     if (data.status === "approved") {
       try {
-        await _internalStartRender(data.id);
+        await startRenderForClip(data.id);
       } catch (err) {
         console.error("[setClipStatus] render queue failed", err);
       }
