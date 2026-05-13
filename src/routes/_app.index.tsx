@@ -2,9 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ClipCard } from "@/components/clip-card";
-import { MOCK_CLIPS, type MockClip } from "@/lib/mock-clips";
-import { listPendingClips, setClipStatus } from "@/lib/clips.functions";
+import type { MockClip } from "@/lib/mock-clips";
+import {
+  listPendingClips,
+  setClipStatus,
+  runPollNow,
+} from "@/lib/clips.functions";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/")({
   component: QueuePage,
@@ -34,6 +39,7 @@ function dbToCard(c: any): MockClip {
 function QueuePage() {
   const fetchClips = useServerFn(listPendingClips);
   const setStatus = useServerFn(setClipStatus);
+  const poll = useServerFn(runPollNow);
   const { data, refetch } = useQuery({
     queryKey: ["pending-clips"],
     queryFn: () => fetchClips(),
@@ -44,16 +50,31 @@ function QueuePage() {
       setStatus({ data: v }),
     onSuccess: () => refetch(),
   });
+  const batchPoll = useMutation({
+    mutationFn: () => poll({ data: {} }),
+    onSuccess: (s: any) => {
+      toast.success(
+        `BATCH COMPLETE — ${s.polled} sources polled, ${s.new_clips} new clips`,
+      );
+      refetch();
+    },
+    onError: (e: any) =>
+      toast.error(e?.message ?? "Batch failed. Check logs."),
+  });
 
-  const liveClips = (data?.clips ?? []).map(dbToCard);
-  const useMock = liveClips.length === 0;
-  const sourceClips = useMock ? MOCK_CLIPS : liveClips;
+  const sourceClips = (data?.clips ?? []).map(dbToCard);
 
   const [streamer, setStreamer] = useState<string>("ALL");
   const [minScore, setMinScore] = useState(0);
   const [batchMode, setBatchMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusIdx, setFocusIdx] = useState(0);
+
+  const streamers = useMemo(
+    () =>
+      Array.from(new Set(sourceClips.map((c) => c.source_streamer))).sort(),
+    [sourceClips],
+  );
 
   const filtered = useMemo(
     () =>
@@ -65,9 +86,8 @@ function QueuePage() {
     [sourceClips, streamer, minScore],
   );
 
-
   function approve(id: string) {
-    if (!useMock) mutate.mutate({ id, status: "approved" });
+    mutate.mutate({ id, status: "approved" });
     setSelected((s) => {
       const n = new Set(s);
       n.delete(id);
@@ -75,14 +95,10 @@ function QueuePage() {
     });
   }
   function reject(id: string) {
-    if (!useMock) mutate.mutate({ id, status: "rejected" });
+    mutate.mutate({ id, status: "rejected" });
   }
-  function regenerate(_id: string) {
-    // Regen is a no-op in live mode for now; it would re-score the clip.
-  }
+  function regenerate(_id: string) {}
 
-
-  // Spacebar approves focused card
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.code === "Space" && filtered[focusIdx]) {
@@ -100,7 +116,6 @@ function QueuePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-end justify-between border-b border-blood/40 pb-4">
         <div>
           <h2 className="font-display text-4xl text-foreground tracking-wider">
@@ -114,6 +129,13 @@ function QueuePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => batchPoll.mutate()}
+            disabled={batchPoll.isPending}
+            className="px-4 py-2 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50"
+          >
+            {batchPoll.isPending ? "POLLING…" : "RUN BATCH NOW"}
+          </button>
           <button
             onClick={() => {
               setBatchMode((b) => !b);
@@ -141,7 +163,6 @@ function QueuePage() {
         </div>
       </div>
 
-      {/* Filter bar */}
       <div className="flex flex-wrap gap-4 items-center bg-panel border border-blood/40 px-4 py-3">
         <div className="flex items-center gap-2">
           <label className="text-xs font-mono text-muted-foreground tracking-widest">
@@ -153,9 +174,11 @@ function QueuePage() {
             className="bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-1.5 tracking-wider focus:border-blood focus:outline-none"
           >
             <option value="ALL">ALL</option>
-            <option value="DEEN">DEEN</option>
-            <option value="RAMPAGE">RAMPAGE</option>
-            <option value="AB">AB</option>
+            {streamers.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -181,15 +204,15 @@ function QueuePage() {
         </div>
       </div>
 
-      {/* Grid */}
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-32">
+        <div className="flex flex-col items-center justify-center py-32 text-center">
           <h3 className="font-display text-6xl text-foreground tracking-widest">
             NO CLIPS PENDING
           </h3>
           <span className="mt-6 w-3 h-3 rounded-full bg-blood animate-pulse-dot" />
-          <p className="mt-6 text-xs font-mono text-muted-foreground tracking-widest">
-            AGENT IS WATCHING. CHECK BACK WHEN STREAMS GO LIVE.
+          <p className="mt-6 text-xs font-mono text-muted-foreground tracking-widest max-w-md">
+            HIT <span className="text-blood">RUN BATCH NOW</span> TO SCAN KICK
+            FOR FRESH CLIPS, OR WAIT FOR THE 5-MIN AUTO POLL.
           </p>
         </div>
       ) : (
