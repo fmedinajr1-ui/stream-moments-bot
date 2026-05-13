@@ -119,6 +119,7 @@ ${spike.sample.map((s) => `  ${s.user}: ${s.text}`).join("\n")}`
 
     const { output } = await generateText({
       model,
+      abortSignal: ac.signal,
       output: Output.object({ schema: ScoreSchema }),
       prompt: `You are scoring a Kick livestream clip for viral potential on Reels/TikTok/Shorts.
 You learn from the user's past approve/reject decisions below — match their taste.
@@ -143,6 +144,7 @@ Score 0-100:
 - audio: likely audio energy
 Then write a punchy ALL-CAPS hook caption (<=60 chars) and a one-sentence rationale that references the spike and/or which past examples it resembles.`,
     });
+    clearTimeout(timer);
     return output;
   } catch (err) {
     console.error("[scoreClip] failed", err);
