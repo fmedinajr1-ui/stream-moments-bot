@@ -91,3 +91,32 @@ export async function getRecentClips(slug: string): Promise<KickClip[]> {
     }))
     .filter((c) => c.id);
 }
+
+export type KickChatMessage = {
+  id: string;
+  content: string;
+  username: string;
+  createdAt: string; // ISO
+};
+
+export async function getRecentChat(slug: string): Promise<KickChatMessage[]> {
+  // Resolve channel id (chatroom id) once
+  const ch = await kickFetch(
+    `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+  );
+  const chatroomId = ch?.chatroom?.id;
+  if (!chatroomId) return [];
+  const data = await kickFetch(
+    `https://kick.com/api/v2/channels/${chatroomId}/messages`,
+  );
+  const list: any[] = data?.data?.messages ?? data?.messages ?? data?.data ?? [];
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((m) => ({
+      id: String(m.id ?? ""),
+      content: String(m.content ?? ""),
+      username: m.sender?.username ?? m.username ?? "anon",
+      createdAt: m.created_at ?? new Date().toISOString(),
+    }))
+    .filter((m) => m.id && m.content);
+}
