@@ -48,6 +48,25 @@ export const getAuditLog = createServerFn({ method: "GET" }).handler(
   },
 );
 
+export const getCronHealth = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const { data } = await supabaseAdmin
+      .from("audit_log")
+      .select("created_at,details")
+      .eq("action", "poll_kick")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    return {
+      runs: (data ?? []).map((r: any) => ({
+        at: r.created_at,
+        polled: r.details?.polled ?? 0,
+        new_clips: r.details?.new_clips ?? 0,
+        errors: (r.details?.sources ?? []).filter((s: any) => s.error).length,
+      })),
+    };
+  },
+);
+
 export const getAnalytics = createServerFn({ method: "GET" }).handler(
   async () => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();

@@ -6,7 +6,8 @@ import type { MockClip } from "@/lib/mock-clips";
 import {
   listPendingClips,
   setClipStatus,
-  runPollNow,
+  getAgentStatus,
+  setAgentPaused,
 } from "@/lib/clips.functions";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -41,34 +42,36 @@ function dbToCard(c: any): MockClip {
 function QueuePage() {
   const fetchClips = useServerFn(listPendingClips);
   const setStatus = useServerFn(setClipStatus);
-  const poll = useServerFn(runPollNow);
+  const fetchStatus = useServerFn(getAgentStatus);
+  const togglePause = useServerFn(setAgentPaused);
   const { data, refetch } = useQuery({
     queryKey: ["pending-clips"],
     queryFn: () => fetchClips(),
     refetchInterval: 30_000,
+  });
+  const { data: status, refetch: refetchStatus } = useQuery({
+    queryKey: ["agent-status"],
+    queryFn: () => fetchStatus(),
+    refetchInterval: 15_000,
   });
   const mutate = useMutation({
     mutationFn: (v: { id: string; status: "approved" | "rejected" }) =>
       setStatus({ data: v }),
     onSuccess: () => refetch(),
   });
-  const batchPoll = useMutation({
-    mutationFn: () => poll({ data: {} }),
-    onSuccess: (s: any) => {
-      toast.success(
-        `BATCH COMPLETE — ${s.polled} sources polled, ${s.new_clips} new clips`,
-      );
-      refetch();
+  const pauseMut = useMutation({
+    mutationFn: (paused: boolean) => togglePause({ data: { paused } }),
+    onSuccess: (_d, paused) => {
+      toast.success(paused ? "AGENT PAUSED" : "AGENT RESUMED");
+      refetchStatus();
     },
-    onError: (e: any) =>
-      toast.error(e?.message ?? "Batch failed. Check logs."),
   });
 
   const sourceClips = (data?.clips ?? []).map(dbToCard);
 
   const [streamer, setStreamer] = useState<string>("ALL");
   const [minScore, setMinScore] = useState(0);
-  const [batchMode, setBatchMode] = useState(false);
+  const [multiSelect, setMultiSelect] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusIdx, setFocusIdx] = useState(0);
 
@@ -116,6 +119,12 @@ function QueuePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [filtered, focusIdx]);
 
+  const lastPollAgo = status?.lastPollAt
+    ? Math.max(0, Math.round((Date.now() - +new Date(status.lastPollAt)) / 1000))
+    : null;
+  const stale = lastPollAgo !== null && lastPollAgo > 180;
+  const isPaused = !!status?.isPaused;
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between border-b border-blood/40 pb-4">
@@ -125,33 +134,26 @@ function QueuePage() {
           </h2>
           <p className="text-xs font-mono text-muted-foreground mt-1 tracking-widest">
             {filtered.length} CLIPS PENDING REVIEW
-            {batchMode && selected.size > 0 && (
+            {multiSelect && selected.size > 0 && (
               <> • {selected.size} SELECTED</>
             )}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => batchPoll.mutate()}
-            disabled={batchPoll.isPending}
-            className="px-4 py-2 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50"
-          >
-            {batchPoll.isPending ? "POLLING…" : "RUN BATCH NOW"}
-          </button>
-          <button
             onClick={() => {
-              setBatchMode((b) => !b);
+              setMultiSelect((b) => !b);
               setSelected(new Set());
             }}
             className={`px-4 py-2 text-xs font-mono tracking-widest border ${
-              batchMode
+              multiSelect
                 ? "bg-blood text-blood-foreground border-blood"
                 : "border-blood/60 text-foreground hover:bg-blood/10"
             }`}
           >
-            {batchMode ? "EXIT BATCH" : "BATCH MODE"}
+            {multiSelect ? "EXIT SELECT" : "SELECT MULTIPLE"}
           </button>
-          {batchMode && selected.size > 0 && (
+          {multiSelect && selected.size > 0 && (
             <button
               onClick={() => {
                 selected.forEach(approve);
@@ -163,6 +165,51 @@ function QueuePage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Auto-monitoring status panel */}
+      <div className="bg-panel border border-blood/40 px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-2.5 h-2.5 rounded-full ${
+              isPaused
+                ? "bg-muted-foreground"
+                : stale
+                ? "bg-gold animate-pulse-dot"
+                : "bg-blood animate-pulse-dot"
+            }`}
+          />
+          <span className="text-xs font-mono tracking-widest text-foreground">
+            {isPaused
+              ? "AGENT PAUSED"
+              : stale
+              ? "AUTO-MONITORING · STALLED"
+              : "AUTO-MONITORING · ON"}
+          </span>
+        </div>
+        <div className="text-xs font-mono text-muted-foreground tracking-widest">
+          LAST POLL:{" "}
+          <span className="text-foreground">
+            {lastPollAgo === null ? "—" : `${lastPollAgo}s ago`}
+          </span>
+        </div>
+        <div className="text-xs font-mono text-muted-foreground tracking-widest">
+          LIVE SOURCES:{" "}
+          <span className="text-foreground">
+            {status?.liveCount ?? 0}/{status?.monitoredCount ?? 0}
+          </span>
+        </div>
+        <div className="text-xs font-mono text-muted-foreground tracking-widest">
+          NEW CLIPS / HR:{" "}
+          <span className="text-foreground">{status?.scoredLastHour ?? 0}</span>
+        </div>
+        <button
+          onClick={() => pauseMut.mutate(!isPaused)}
+          disabled={pauseMut.isPending}
+          className="ml-auto px-3 py-1.5 text-[10px] font-mono tracking-widest border border-blood/60 text-foreground hover:bg-blood/10 disabled:opacity-50"
+        >
+          {isPaused ? "RESUME AGENT" : "PAUSE AGENT"}
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-4 items-center bg-panel border border-blood/40 px-4 py-3">
@@ -213,8 +260,8 @@ function QueuePage() {
           </h3>
           <span className="mt-6 w-3 h-3 rounded-full bg-blood animate-pulse-dot" />
           <p className="mt-6 text-xs font-mono text-muted-foreground tracking-widest max-w-md">
-            HIT <span className="text-blood">RUN BATCH NOW</span> TO SCAN KICK
-            FOR FRESH CLIPS, OR WAIT FOR THE 5-MIN AUTO POLL.
+            AGENT IS WATCHING YOUR HANDLES 24/7. NEW CLIPS APPEAR HERE WITHIN
+            ~60 SECONDS OF KICK GENERATING THEM.
           </p>
         </div>
       ) : (
@@ -228,7 +275,7 @@ function QueuePage() {
               onApprove={() => approve(clip.id)}
               onReject={() => reject(clip.id)}
               onRegenerate={() => regenerate(clip.id)}
-              batchMode={batchMode}
+              batchMode={multiSelect}
               checked={selected.has(clip.id)}
               onToggleCheck={() =>
                 setSelected((s) => {
