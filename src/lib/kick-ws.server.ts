@@ -1,11 +1,17 @@
 // Kick chat via Pusher WebSocket (public, no auth).
-// Cloudflare Workers support the standard WebSocket client API.
+// Uses Cloudflare Workers' fetch-upgrade pattern — the standard
+// `new WebSocket(url)` constructor does NOT establish outbound
+// connections in Workers; you must do `fetch(url, { headers: { Upgrade } })`
+// and read `response.webSocket`.
 
 import type { KickChatMessage } from "@/lib/kick.server";
 
-// Kick's public Pusher app key + cluster (used by kick.com's own web client).
 const PUSHER_URL =
   "wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0&flash=false";
+
+// HTTPS variant for fetch-upgrade. Workers accept https/wss interchangeably
+// here, but http(s) is the documented form for the upgrade fetch.
+const PUSHER_FETCH_URL = PUSHER_URL.replace(/^wss:/, "https:");
 
 export type ChatSample = {
   messages: KickChatMessage[];
@@ -18,24 +24,50 @@ export type ChatSample = {
  * Open a Pusher WebSocket to Kick's chatroom and collect messages for
  * `durationMs` milliseconds. Resolves with what was collected.
  */
-export function sampleKickChat(
+export async function sampleKickChat(
   chatroomId: number | string,
   durationMs = 10_000,
 ): Promise<ChatSample> {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const messages: KickChatMessage[] = [];
-    let connected = false;
-    let settled = false;
-    let ws: WebSocket | null = null;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+  const start = Date.now();
+  const messages: KickChatMessage[] = [];
+  let connected = false;
+  let firstMsgLogged = false;
 
+  // 1. Upgrade via fetch — Cloudflare Workers' supported outbound WS path.
+  let ws: WebSocket;
+  try {
+    const resp = await fetch(PUSHER_FETCH_URL, {
+      headers: { Upgrade: "websocket" },
+    });
+    const sock = (resp as unknown as { webSocket: WebSocket | null }).webSocket;
+    if (!sock) {
+      return {
+        messages,
+        durationMs: Date.now() - start,
+        connected: false,
+        error: `no webSocket on response (status ${resp.status})`,
+      };
+    }
+    ws = sock;
+    // Accept the socket so the runtime delivers events to us.
+    (ws as unknown as { accept: () => void }).accept();
+  } catch (err: any) {
+    return {
+      messages,
+      durationMs: Date.now() - start,
+      connected: false,
+      error: `ws upgrade failed: ${err?.message ?? String(err)}`,
+    };
+  }
+
+  // 2. Collect for durationMs, then resolve.
+  return await new Promise<ChatSample>((resolve) => {
+    let settled = false;
     const finish = (error?: string) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
       try {
-        ws?.close();
+        ws.close();
       } catch {}
       resolve({
         messages,
@@ -44,17 +76,6 @@ export function sampleKickChat(
         error,
       });
     };
-
-    try {
-      ws = new WebSocket(PUSHER_URL);
-    } catch (err: any) {
-      return finish(`ws ctor failed: ${err?.message ?? String(err)}`);
-    }
-
-    ws.addEventListener("open", () => {
-      // Subscribe is fine to send before connection_established on Pusher;
-      // it'll be queued. But wait for it to be safe.
-    });
 
     ws.addEventListener("message", (ev: MessageEvent) => {
       let frame: any;
@@ -68,7 +89,7 @@ export function sampleKickChat(
       if (event === "pusher:connection_established") {
         connected = true;
         try {
-          ws?.send(
+          ws.send(
             JSON.stringify({
               event: "pusher:subscribe",
               data: { auth: "", channel: `chatrooms.${chatroomId}.v2` },
@@ -82,7 +103,7 @@ export function sampleKickChat(
 
       if (event === "pusher:ping") {
         try {
-          ws?.send(JSON.stringify({ event: "pusher:pong", data: {} }));
+          ws.send(JSON.stringify({ event: "pusher:pong", data: {} }));
         } catch {}
         return;
       }
@@ -92,7 +113,6 @@ export function sampleKickChat(
         return;
       }
 
-      // Chat message event — Kick wraps the payload as a JSON string in `data`.
       if (
         event === "App\\Events\\ChatMessageEvent" ||
         event.endsWith("ChatMessageEvent")
@@ -116,17 +136,17 @@ export function sampleKickChat(
           payload?.created_at ?? payload?.createdAt ?? new Date().toISOString();
         if (id && content) {
           messages.push({ id, content, username, createdAt });
+          if (!firstMsgLogged) {
+            firstMsgLogged = true;
+            console.log(`[kick-ws] first msg for chatroom ${chatroomId}`);
+          }
         }
       }
     });
 
-    ws.addEventListener("close", () => {
-      finish();
-    });
-    ws.addEventListener("error", () => {
-      finish("ws error");
-    });
+    ws.addEventListener("close", () => finish());
+    ws.addEventListener("error", () => finish("ws error"));
 
-    timer = setTimeout(() => finish(), durationMs);
+    setTimeout(() => finish(), durationMs);
   });
 }
