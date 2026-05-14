@@ -103,15 +103,38 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
         .slice(0, 5)
         .map((m) => ({ user: m.username, text: m.content.slice(0, 140) }));
 
-      await supabaseAdmin.from("chat_velocity").insert({
-        source_id: src.id,
-        msgs_per_sec: mps,
-        baseline_msgs_per_sec: baseline,
-        spike_ratio: ratio,
-        is_spike: isSpike,
-        sample_messages: sampleMessages,
-        peak_window: `${Math.round(seconds)}s`,
-      });
+      const { data: velRow } = await supabaseAdmin
+        .from("chat_velocity")
+        .insert({
+          source_id: src.id,
+          msgs_per_sec: mps,
+          baseline_msgs_per_sec: baseline,
+          spike_ratio: ratio,
+          is_spike: isSpike,
+          sample_messages: sampleMessages,
+          peak_window: `${Math.round(seconds)}s`,
+        })
+        .select("id")
+        .single();
+
+      if (isSpike && velRow) {
+        try {
+          const clipRes = await createSpikeClip({
+            sourceId: src.id,
+            slug: src.slug,
+            matchedVelocityId: velRow.id,
+            spikeRatio: ratio,
+            msgsPerSec: mps,
+            sampleMessages,
+          });
+          console.log(
+            `[chat-pulse] spike clip for ${src.slug}:`,
+            JSON.stringify(clipRes),
+          );
+        } catch (err) {
+          console.error(`[chat-pulse] spike clip failed for ${src.slug}`, err);
+        }
+      }
 
       return { src, log, isSpike };
     }),
