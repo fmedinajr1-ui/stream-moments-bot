@@ -40,16 +40,19 @@ export async function sampleKickChat(
       headers: { Upgrade: "websocket" },
     });
     const sock = (resp as unknown as { webSocket: WebSocket | null }).webSocket;
-    if (!sock) {
+    console.log(
+      `[kick-ws] upgrade status=${resp.status} hasSocket=${!!sock}`,
+    );
+    if (resp.status !== 101 || !sock) {
+      const bodyPreview = await resp.text().catch(() => "");
       return {
         messages,
         durationMs: Date.now() - start,
         connected: false,
-        error: `no webSocket on response (status ${resp.status})`,
+        error: `upgrade failed status=${resp.status} :: ${bodyPreview.slice(0, 200)}`,
       };
     }
     ws = sock;
-    // Accept the socket so the runtime delivers events to us.
     (ws as unknown as { accept: () => void }).accept();
   } catch (err: any) {
     return {
