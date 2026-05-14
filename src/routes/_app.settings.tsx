@@ -8,6 +8,11 @@ import {
   updateAgentSettings,
   getLatestTrainingExportUrl,
 } from "@/lib/agent.functions";
+import {
+  getSpikeSettings,
+  updateSpikeSettings,
+  testAutoGrab,
+} from "@/lib/clips.functions";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
