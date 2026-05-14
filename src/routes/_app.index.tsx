@@ -302,24 +302,25 @@ function QueuePage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filtered.map((clip, i) => (
-            <ClipCard
-              key={clip.id}
-              clip={clip}
-              focused={i === focusIdx}
-              onFocus={() => setFocusIdx(i)}
-              onApprove={() => approve(clip.id)}
-              onReject={() => reject(clip.id)}
-              onRegenerate={() => regenerate(clip.id)}
-              batchMode={multiSelect}
-              checked={selected.has(clip.id)}
-              onToggleCheck={() =>
-                setSelected((s) => {
-                  const n = new Set(s);
-                  n.has(clip.id) ? n.delete(clip.id) : n.add(clip.id);
-                  return n;
-                })
-              }
-            />
+            <div key={clip.id} id={`clip-${clip.id}`}>
+              <ClipCard
+                clip={clip}
+                focused={i === focusIdx}
+                onFocus={() => setFocusIdx(i)}
+                onApprove={() => approve(clip.id)}
+                onReject={() => reject(clip.id)}
+                onRegenerate={() => regenerate(clip.id)}
+                batchMode={multiSelect}
+                checked={selected.has(clip.id)}
+                onToggleCheck={() =>
+                  setSelected((s) => {
+                    const n = new Set(s);
+                    n.has(clip.id) ? n.delete(clip.id) : n.add(clip.id);
+                    return n;
+                  })
+                }
+              />
+            </div>
           ))}
         </div>
       )}
