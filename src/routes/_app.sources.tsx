@@ -52,6 +52,7 @@ function SourcesPage() {
   const setSens = useServerFn(updateSourceSensitivity);
   const forceWatch = useServerFn(forceWatchSource);
   const stopForce = useServerFn(stopForceWatchSource);
+  const clipNow = useServerFn(clipNowFromLive);
   const [forceMins, setForceMins] = useState(30);
 
   const { data: vel } = useQuery({
