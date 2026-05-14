@@ -15,6 +15,21 @@ export const retryRender = createServerFn({ method: "POST" })
     return startRenderForClip(data.clipId);
   });
 
+// Force a fresh render even if rendered_video_url is already set — used to
+// purge clips that were captured with the old buggy offset-past-end logic.
+export const regrabClip = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ clipId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    await supabaseAdmin
+      .from("clips")
+      .update({
+        rendered_video_url: null,
+        stream_timestamp: new Date().toISOString(),
+      })
+      .eq("id", data.clipId);
+    return startRenderForClip(data.clipId);
+  });
+
 export const getRenderForClip = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ clipId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
