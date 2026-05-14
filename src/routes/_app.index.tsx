@@ -216,15 +216,15 @@ function QueuePage() {
 
       <LiveWatchPanel />
 
-      <div className="flex flex-wrap gap-4 items-center bg-panel border border-blood/40 px-4 py-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap gap-3 sm:gap-4 items-stretch sm:items-center bg-panel border border-blood/40 px-3 sm:px-4 py-3">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <label className="text-xs font-mono text-muted-foreground tracking-widest">
             STREAMER
           </label>
           <select
             value={streamer}
             onChange={(e) => setStreamer(e.target.value)}
-            className="bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-1.5 tracking-wider focus:border-blood focus:outline-none"
+            className="flex-1 sm:flex-none bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-2 tracking-wider focus:border-blood focus:outline-none"
           >
             <option value="ALL">ALL</option>
             {streamers.map((s) => (
