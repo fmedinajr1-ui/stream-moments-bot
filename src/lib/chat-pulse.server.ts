@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sampleKickChat } from "@/lib/kick-ws.server";
+import { createSpikeClip } from "@/lib/spike-clip.server";
 
 export type ChatPulseSummary = {
   polled: number;
