@@ -15,6 +15,7 @@ export type SpikeClipInput = {
   timestampIso?: string;
   // Optional override for the hook caption.
   hookCaption?: string;
+  autoGrabbed?: boolean;
 };
 
 function deriveCaption(
