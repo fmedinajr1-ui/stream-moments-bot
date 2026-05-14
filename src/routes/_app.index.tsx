@@ -214,6 +214,8 @@ function QueuePage() {
         </button>
       </div>
 
+      <LiveWatchPanel />
+
       <div className="flex flex-wrap gap-4 items-center bg-panel border border-blood/40 px-4 py-3">
         <div className="flex items-center gap-2">
           <label className="text-xs font-mono text-muted-foreground tracking-widest">
