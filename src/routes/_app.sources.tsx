@@ -220,7 +220,69 @@ function SourcesPage() {
               <span className="text-muted-foreground tracking-widest">POLL EVERY</span>
               <span className="text-gold">{s.poll_interval_min} MIN</span>
             </div>
-            <div className="mt-4 flex gap-2">
+            {(() => {
+              const forced =
+                s.force_live_until &&
+                new Date(s.force_live_until) > new Date();
+              const minsLeft = forced
+                ? Math.max(
+                    0,
+                    Math.round(
+                      (+new Date(s.force_live_until!) - Date.now()) / 60_000,
+                    ),
+                  )
+                : 0;
+              return (
+                <div className="mt-4 space-y-2 border-t border-blood/30 pt-3">
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-muted-foreground tracking-widest">
+                      FORCE WATCH
+                    </span>
+                    {forced ? (
+                      <span className="text-blood tracking-widest">
+                        {minsLeft}m LEFT
+                      </span>
+                    ) : (
+                      <select
+                        value={forceMins}
+                        onChange={(e) => setForceMins(Number(e.target.value))}
+                        className="bg-background border border-blood/40 text-foreground text-[10px] font-mono px-1 py-0.5 tracking-widest focus:border-blood focus:outline-none"
+                      >
+                        <option value={15}>15 MIN</option>
+                        <option value={30}>30 MIN</option>
+                        <option value={60}>60 MIN</option>
+                        <option value={120}>2 HR</option>
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {forced ? (
+                      <button
+                        onClick={() => stopMut.mutate(s.id)}
+                        disabled={stopMut.isPending}
+                        className="flex-1 text-[10px] font-mono tracking-widest border border-blood bg-blood/20 text-foreground px-2 py-1.5 hover:bg-blood/30 disabled:opacity-50"
+                      >
+                        STOP WATCHING
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          forceMut.mutate({
+                            sourceId: s.id,
+                            minutes: forceMins,
+                          })
+                        }
+                        disabled={forceMut.isPending}
+                        className="flex-1 text-[10px] font-mono tracking-widest bg-blood text-blood-foreground px-2 py-1.5 hover:shadow-glow-red disabled:opacity-50"
+                      >
+                        {forceMut.isPending ? "STARTING…" : "FORCE WATCH"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="mt-3 flex gap-2">
               <button
                 onClick={() => pollMut.mutate(s.id)}
                 disabled={pollMut.isPending}
