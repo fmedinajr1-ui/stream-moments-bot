@@ -1,17 +1,10 @@
 // Kick chat via Pusher WebSocket (public, no auth).
-// Uses Cloudflare Workers' fetch-upgrade pattern — the standard
-// `new WebSocket(url)` constructor does NOT establish outbound
-// connections in Workers; you must do `fetch(url, { headers: { Upgrade } })`
-// and read `response.webSocket`.
+// Uses Cloudflare Workers' fetch-upgrade pattern.
 
 import type { KickChatMessage } from "@/lib/kick.server";
 
-const PUSHER_URL =
-  "wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0&flash=false";
-
-// HTTPS variant for fetch-upgrade. Workers accept https/wss interchangeably
-// here, but http(s) is the documented form for the upgrade fetch.
-const PUSHER_FETCH_URL = PUSHER_URL.replace(/^wss:/, "https:");
+const PUSHER_FETCH_URL =
+  "https://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0&flash=false";
 
 export type ChatSample = {
   messages: KickChatMessage[];
@@ -20,10 +13,6 @@ export type ChatSample = {
   error?: string;
 };
 
-/**
- * Open a Pusher WebSocket to Kick's chatroom and collect messages for
- * `durationMs` milliseconds. Resolves with what was collected.
- */
 export async function sampleKickChat(
   chatroomId: number | string,
   durationMs = 10_000,
@@ -33,15 +22,17 @@ export async function sampleKickChat(
   let connected = false;
   let firstMsgLogged = false;
 
-  // 1. Upgrade via fetch — Cloudflare Workers' supported outbound WS path.
   let ws: WebSocket;
   try {
     const resp = await fetch(PUSHER_FETCH_URL, {
-      headers: { Upgrade: "websocket" },
+      headers: {
+        Upgrade: "websocket",
+        Origin: "https://kick.com",
+      },
     });
     const sock = (resp as unknown as { webSocket: WebSocket | null }).webSocket;
     console.log(
-      `[kick-ws] upgrade status=${resp.status} hasSocket=${!!sock}`,
+      `[kick-ws] upgrade chatroom=${chatroomId} status=${resp.status} hasSocket=${!!sock}`,
     );
     if (resp.status !== 101 || !sock) {
       const bodyPreview = await resp.text().catch(() => "");
@@ -59,11 +50,10 @@ export async function sampleKickChat(
       messages,
       durationMs: Date.now() - start,
       connected: false,
-      error: `ws upgrade failed: ${err?.message ?? String(err)}`,
+      error: `ws upgrade fetch failed: ${err?.message ?? String(err)}`,
     };
   }
 
-  // 2. Collect for durationMs, then resolve.
   return await new Promise<ChatSample>((resolve) => {
     let settled = false;
     const finish = (error?: string) => {
@@ -80,10 +70,11 @@ export async function sampleKickChat(
       });
     };
 
-    ws.addEventListener("message", (ev: MessageEvent) => {
+    (ws as any).onmessage = (ev: MessageEvent) => {
       let frame: any;
+      const raw = typeof ev.data === "string" ? ev.data : "";
       try {
-        frame = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+        frame = JSON.parse(raw);
       } catch {
         return;
       }
@@ -91,6 +82,7 @@ export async function sampleKickChat(
 
       if (event === "pusher:connection_established") {
         connected = true;
+        console.log(`[kick-ws] connected chatroom=${chatroomId}`);
         try {
           ws.send(
             JSON.stringify({
@@ -99,8 +91,13 @@ export async function sampleKickChat(
             }),
           );
         } catch (err: any) {
-          finish(`subscribe failed: ${err?.message ?? String(err)}`);
+          finish(`subscribe send failed: ${err?.message ?? String(err)}`);
         }
+        return;
+      }
+
+      if (event === "pusher_internal:subscription_succeeded") {
+        console.log(`[kick-ws] subscribed chatroom=${chatroomId}`);
         return;
       }
 
@@ -141,14 +138,26 @@ export async function sampleKickChat(
           messages.push({ id, content, username, createdAt });
           if (!firstMsgLogged) {
             firstMsgLogged = true;
-            console.log(`[kick-ws] first msg for chatroom ${chatroomId}`);
+            console.log(`[kick-ws] first msg chatroom=${chatroomId}`);
           }
         }
       }
-    });
+    };
 
-    ws.addEventListener("close", () => finish());
-    ws.addEventListener("error", () => finish("ws error"));
+    (ws as any).onclose = (ev: CloseEvent) => {
+      console.log(
+        `[kick-ws] close chatroom=${chatroomId} code=${ev?.code} reason=${ev?.reason}`,
+      );
+      finish();
+    };
+
+    (ws as any).onerror = (ev: Event) => {
+      const detail = (ev as any)?.message ?? (ev as any)?.error ?? "";
+      console.log(
+        `[kick-ws] error chatroom=${chatroomId} detail=${String(detail).slice(0, 200)}`,
+      );
+      finish(`ws error: ${String(detail).slice(0, 200)}`);
+    };
 
     setTimeout(() => finish(), durationMs);
   });
