@@ -11,11 +11,16 @@ const NAV = [
   { to: "/settings", label: "SETTINGS" },
 ] as const;
 
-export function Sidebar({ agentActive = true }: { agentActive?: boolean }) {
+export function SidebarContent({
+  agentActive = true,
+  onNavigate,
+}: {
+  agentActive?: boolean;
+  onNavigate?: () => void;
+}) {
   const { pathname } = useLocation();
-
   return (
-    <aside className="w-60 shrink-0 bg-sidebar border-r border-blood flex flex-col h-screen sticky top-0 noise">
+    <div className="flex flex-col h-full bg-sidebar noise">
       {/* Logo */}
       <div className="relative px-5 py-6 border-b border-blood/40">
         <div className="absolute inset-0 bg-radial-blood opacity-60 pointer-events-none" />
@@ -27,7 +32,7 @@ export function Sidebar({ agentActive = true }: { agentActive?: boolean }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4">
+      <nav className="flex-1 py-4 overflow-y-auto">
         {NAV.map((item) => {
           const active =
             item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
@@ -35,6 +40,7 @@ export function Sidebar({ agentActive = true }: { agentActive?: boolean }) {
             <Link
               key={item.to}
               to={item.to}
+              onClick={onNavigate}
               className={`block px-5 py-3 text-sm font-display tracking-wider border-l-2 transition-colors ${
                 active
                   ? "border-blood text-foreground bg-blood/10"
@@ -60,6 +66,14 @@ export function Sidebar({ agentActive = true }: { agentActive?: boolean }) {
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+export function Sidebar({ agentActive = true }: { agentActive?: boolean }) {
+  return (
+    <aside className="hidden md:flex w-60 shrink-0 border-r border-blood h-screen sticky top-0">
+      <SidebarContent agentActive={agentActive} />
     </aside>
   );
 }

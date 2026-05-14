@@ -10,7 +10,7 @@ export function StreamStatusBar({
   viewers?: number;
 }) {
   return (
-    <div className="border-b border-blood/40 bg-panel px-6 py-2.5 flex items-center gap-4 text-xs font-mono">
+    <div className="border-b border-blood/40 bg-panel px-3 sm:px-6 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
       {isLive ? (
         <>
           <div className="flex items-center gap-2">
@@ -20,7 +20,7 @@ export function StreamStatusBar({
           <span className="text-foreground font-bold tracking-wider">
             {streamer}
           </span>
-          <span className="text-muted-foreground">•</span>
+          <span className="text-muted-foreground hidden sm:inline">•</span>
           <span className="text-gold">
             {viewers.toLocaleString()} viewers
           </span>
@@ -45,7 +45,10 @@ function ClientClock() {
     return () => clearInterval(id);
   }, []);
   return (
-    <span suppressHydrationWarning className="ml-auto text-muted-foreground tracking-widest">
+    <span
+      suppressHydrationWarning
+      className="ml-auto text-muted-foreground tracking-widest"
+    >
       {t} UTC
     </span>
   );
