@@ -386,8 +386,8 @@ function LiveWatchPanel() {
 
   return (
     <section className="bg-panel border border-blood/40 scanlines">
-      <div className="px-4 py-3 border-b border-blood/40 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
+      <div className="px-3 sm:px-4 py-3 border-b border-blood/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h3 className="font-display text-lg sm:text-xl tracking-widest text-foreground">
             LIVE WATCH
           </h3>
@@ -414,7 +414,7 @@ function LiveWatchPanel() {
         <select
           value={selectedId ?? ""}
           onChange={(e) => setSelectedId(e.target.value)}
-          className="bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-1.5 tracking-wider focus:border-blood focus:outline-none"
+          className="w-full sm:w-auto bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-2 sm:py-1.5 tracking-wider focus:border-blood focus:outline-none"
         >
           {sources.map((s) => (
             <option key={s.id} value={s.id}>
@@ -426,16 +426,30 @@ function LiveWatchPanel() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-0">
-        <div className="aspect-video bg-black border-r border-blood/20">
+        <div className="relative aspect-video bg-black border-b lg:border-b-0 lg:border-r border-blood/20">
           {selected ? (
-            <iframe
-              key={selected.slug}
-              src={`https://player.kick.com/${selected.slug}?muted=true&autoplay=true`}
-              allow="autoplay; fullscreen"
-              allowFullScreen
-              className="w-full h-full"
-              title={`${selected.display_name} live`}
-            />
+            <>
+              <iframe
+                key={`${selected.slug}-${unmuted ? "on" : "off"}`}
+                src={`https://player.kick.com/${selected.slug}?muted=${unmuted ? "false" : "true"}&autoplay=true`}
+                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
+                title={`${selected.display_name} live`}
+              />
+              <button
+                type="button"
+                onClick={() => setUnmuted((v) => !v)}
+                className={`absolute bottom-2 right-2 px-3 py-2 text-[10px] font-mono tracking-widest border min-h-[36px] ${
+                  unmuted
+                    ? "bg-background/80 border-blood/40 text-foreground hover:bg-background"
+                    : "bg-blood text-blood-foreground border-blood animate-pulse-dot shadow-glow-red"
+                }`}
+                aria-label={unmuted ? "Mute player" : "Unmute player"}
+              >
+                {unmuted ? "🔊 MUTE" : "🔇 TAP TO UNMUTE"}
+              </button>
+            </>
           ) : (
             <div className="w-full h-full flex items-center justify-center font-display text-2xl text-blood/40">
               SELECT A STREAMER
@@ -443,7 +457,7 @@ function LiveWatchPanel() {
           )}
         </div>
 
-        <div className="p-4 flex flex-col gap-3">
+        <div className="p-3 sm:p-4 flex flex-col gap-3">
           <label className="text-[10px] font-mono tracking-widest text-muted-foreground">
             CAPTION (OPTIONAL)
           </label>
@@ -453,7 +467,7 @@ function LiveWatchPanel() {
             onChange={(e) => setCaption(e.target.value)}
             maxLength={80}
             placeholder="e.g. NEAR-MISS ON HIGHWAY"
-            className="bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-2 tracking-wider focus:border-blood focus:outline-none"
+            className="bg-background border border-blood/40 text-foreground text-sm font-mono px-3 py-3 tracking-wider focus:border-blood focus:outline-none"
           />
 
           <label className="text-[10px] font-mono tracking-widest text-muted-foreground mt-1">
@@ -467,7 +481,7 @@ function LiveWatchPanel() {
                   key={d}
                   type="button"
                   onClick={() => setDuration(d)}
-                  className={`py-2 text-xs font-mono tracking-widest border transition-colors ${
+                  className={`py-3 text-xs font-mono tracking-widest border transition-colors min-h-[44px] ${
                     active
                       ? "bg-blood text-blood-foreground border-blood"
                       : "border-blood/40 text-foreground hover:bg-blood/10"
@@ -483,7 +497,7 @@ function LiveWatchPanel() {
             type="button"
             onClick={() => grabMut.mutate()}
             disabled={!selected || grabMut.isPending}
-            className="mt-auto py-3 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-auto w-full py-4 text-sm font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
           >
             {grabMut.isPending ? "GRABBING…" : "▶ GRAB CLIP NOW"}
           </button>
