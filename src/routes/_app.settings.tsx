@@ -63,7 +63,7 @@ function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="border-b border-blood/40 pb-4">
-        <h2 className="font-display text-4xl tracking-wider">AGENT SETTINGS</h2>
+        <h2 className="font-display text-2xl sm:text-3xl md:text-4xl tracking-wider">AGENT SETTINGS</h2>
         <p className="text-xs font-mono text-muted-foreground mt-1 tracking-widest">
           CONTROL HOW THE CLIPPER SCORES AND ADMITS NEW CLIPS.
         </p>

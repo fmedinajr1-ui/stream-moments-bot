@@ -64,7 +64,7 @@ function CampaignsPage() {
     <div className="space-y-6">
       <div className="flex items-end justify-between border-b border-blood/40 pb-4">
         <div>
-          <h2 className="font-display text-4xl tracking-wider">CAMPAIGNS</h2>
+          <h2 className="font-display text-2xl sm:text-3xl md:text-4xl tracking-wider">CAMPAIGNS</h2>
           <p className="text-xs font-mono text-muted-foreground mt-1 tracking-widest">
             {campaigns.length} CAMPAIGNS TRACKED
           </p>

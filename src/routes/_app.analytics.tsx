@@ -36,7 +36,7 @@ function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <div className="border-b border-blood/40 pb-4">
-        <h2 className="font-display text-4xl tracking-wider">ANALYTICS</h2>
+        <h2 className="font-display text-2xl sm:text-3xl md:text-4xl tracking-wider">ANALYTICS</h2>
         <p className="text-xs font-mono text-muted-foreground mt-1 tracking-widest">
           LAST 7 DAYS
         </p>
@@ -149,7 +149,7 @@ function Stat({
         {label}
       </div>
       <div
-        className={`font-display text-5xl tracking-wider mt-2 ${
+        className={`font-display text-3xl sm:text-4xl md:text-5xl tracking-wider mt-2 ${
           accent ? "text-blood" : "text-foreground"
         }`}
       >

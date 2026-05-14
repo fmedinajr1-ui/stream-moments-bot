@@ -26,7 +26,7 @@ function PipelinePage() {
   return (
     <div className="space-y-6">
       <div className="border-b border-blood/40 pb-4">
-        <h2 className="font-display text-4xl tracking-wider">PIPELINE</h2>
+        <h2 className="font-display text-2xl sm:text-3xl md:text-4xl tracking-wider">PIPELINE</h2>
         <p className="text-xs font-mono text-muted-foreground mt-1 tracking-widest">
           REAL-TIME AGENT ACTIVITY • LAST {entries.length} EVENTS
         </p>
