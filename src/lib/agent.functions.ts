@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { pollSources } from "@/lib/poll-kick.server";
 
 export const getAgentSettings = createServerFn({ method: "GET" }).handler(
   async () => {
