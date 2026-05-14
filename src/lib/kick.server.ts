@@ -1,7 +1,7 @@
 // Unofficial Kick adapter. Endpoints are not stable; we wrap with retry + tolerant parsing.
 
 const UA =
-  "Mozilla/5.0 (compatible; GreatsClipper/1.0; +https://greatsclipper.local)";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 async function kickFetch(url: string, init?: RequestInit) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -10,7 +10,10 @@ async function kickFetch(url: string, init?: RequestInit) {
         ...init,
         headers: {
           "User-Agent": UA,
-          Accept: "application/json",
+          Accept: "application/json, text/plain, */*",
+          "Accept-Language": "en-US,en;q=0.9",
+          Referer: "https://kick.com/",
+          Origin: "https://kick.com",
           ...(init?.headers ?? {}),
         },
       });
@@ -18,7 +21,14 @@ async function kickFetch(url: string, init?: RequestInit) {
         await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
         continue;
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        let preview = "";
+        try {
+          preview = (await res.text()).slice(0, 200);
+        } catch {}
+        console.warn(`[kick] non-OK ${res.status} ${url} :: ${preview}`);
+        return null;
+      }
       return await res.json();
     } catch (err) {
       console.error(`[kick] fetch failed (${attempt + 1}/3) ${url}`, err);

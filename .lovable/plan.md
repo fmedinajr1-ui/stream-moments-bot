@@ -1,40 +1,32 @@
-## Goal
+## Fix the Kick chat reader so spikes can fire
 
-Make auto-monitoring actually run 24/7 — independent of any open browser tab — by scheduling the existing poll endpoint at the database layer.
+**Problem:** `getRecentChat()` always returns `[]` for `rampagejackson`, so every poll records `msgs_per_sec = 0`, no spikes are detected, and no clips are ever queued. Root cause: we're hitting `https://kick.com/api/v2/channels/{chatroomId}/messages` (wrong path — `chatroomId` is not a channel slug) and Kick/Cloudflare returns nothing usable.
 
-## Why pg_cron instead of Cloudflare cron triggers
+### What I'll change
 
-You picked "the scheduler option." On this Lovable stack the supported scheduler is **Supabase `pg_cron` + `pg_net`** calling our public route. It runs in the database, fires every minute regardless of traffic, and needs no `wrangler.jsonc` edits. Outcome is identical to a Cloudflare cron trigger.
+**1. `src/lib/kick.server.ts` — rewrite `getRecentChat`**
+- Resolve `chatroom.id` from `/api/v2/channels/{slug}` (already works).
+- Switch the messages call to the correct endpoint: `https://kick.com/api/v2/chatrooms/{chatroomId}/messages`.
+- If that returns empty/blocked, fall back to `https://kick.com/api/v1/channels/{slug}/messages` as a secondary.
+- Send browser-like headers (real `User-Agent`, `Accept-Language`, `Referer: https://kick.com/{slug}`, `Origin: https://kick.com`) so Cloudflare is less likely to strip the body.
+- Tolerant parsing across the shapes Kick returns (`data.messages`, `data.data`, plain array).
+- Return up to ~50 most recent messages.
 
-## What gets scheduled
+**2. Visibility so we can tell *why* it's empty**
+- In `kickFetch`, when a non-OK status is returned, log status + first 200 chars of body (currently we silently return `null`).
+- In `getRecentChat`, log which endpoint variant succeeded and how many messages came back. If all variants return empty, log that explicitly with the chatroom id used.
+- In `runChatPulse` (`src/lib/chat-pulse.server.ts`), when `msgs.length === 0`, write that into the `sample_messages` field as `[{ user: "_debug", text: "no messages from kick api" }]` so it shows up in the DB without changing the schema. (Optional — confirm before I add it.)
 
-Endpoint already exists: `POST /api/public/cron/poll-kick` → calls `pollSources()` → updates `sources.last_polled_at`, detects live streams, ingests Kick clips, scores them, writes to `clips`.
+**3. No DB schema changes, no UI changes.** Cron and scoring pipeline are untouched — once chat actually flows in, the existing spike detection + scoring + insert path runs as designed.
 
-## Schedule
+### How we'll verify
 
-Every **60 seconds**, all sources (the route already iterates `sources` where `is_monitoring = true`).
+1. After the edit deploys to the published URL, hit `POST /api/public/cron/chat-pulse` once.
+2. Check `chat_velocity` for `rampagejackson`'s source — `msgs_per_sec` should be > 0 and `sample_messages` populated.
+3. Check worker logs for the new `[kick]` lines to confirm which endpoint is serving messages.
+4. Wait for a real spike (or temporarily lower `spike_sensitivity` on that source) and confirm a row lands in `clips`.
 
-```
-* * * * *   →   POST https://project--f25d50e3-8b88-4a00-abe1-abbf74e02448.lovable.app/api/public/cron/poll-kick
-```
+### Out of scope (separate follow-up if needed)
 
-Headers: `Content-Type: application/json`, `apikey: <anon key>`. Body: `{}`.
-
-## Steps
-
-1. Enable extensions `pg_cron` and `pg_net` (via migration if not already on).
-2. Insert the `cron.schedule(...)` row pointing at the production stable URL with the anon key.
-3. Verify after ~90s:
-   - `select * from cron.job_run_details order by start_time desc limit 5;` shows successes
-   - `sources.last_polled_at` advances every minute
-   - Queue page badge flips from `STALLED` to `AUTO-MONITORING · ON`
-
-## Out of scope
-
-- Changing poll logic, scoring, or render pipeline.
-- Per-source polling intervals (the route already respects `poll_interval_min`; the cron just gives it a chance to run).
-- Cloudflare Worker cron triggers (not needed; pg_cron achieves the same thing on this stack).
-
-## One thing to confirm
-
-The `last_known_live: false` for all 3 streamers means **even with perfect polling, no clips will be created until one of them goes live.** This plan fixes the "is it watching?" problem. It does not manufacture clips out of offline streams — that's expected behavior.
+- "Force clip now" manual trigger button (option 2 from the previous question). Say the word and I'll add it after this lands.
+- Switching to Kick's websocket Pusher chat feed — heavier change, only worth it if the REST endpoint stays unreliable after this fix.
