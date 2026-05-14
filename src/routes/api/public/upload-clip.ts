@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { verifyUploadToken } from "@/lib/browser-capture.functions";
+import { verifyUploadToken } from "@/lib/browser-capture.server";
 import { startRenderForClip } from "@/lib/render-runner.server";
 
 async function handle(request: Request) {
