@@ -271,6 +271,16 @@ export function LiveWatchGrid() {
     queryFn: () => fetchActivity(),
     refetchInterval: 15_000,
   });
+  const fetchObs = useServerFn(listObsClients);
+  const { data: obsData } = useQuery({
+    queryKey: ["obs-clients"],
+    queryFn: () => fetchObs(),
+    refetchInterval: 20_000,
+  });
+  const obsBySlug = new Map<string, boolean>();
+  for (const c of (obsData?.clients ?? []) as Array<{ slug: string; online: boolean }>) {
+    obsBySlug.set(c.slug, c.online);
+  }
 
   const sources = (data?.sources ?? []) as LiveSource[];
   const liveSources = sources.filter((s) => s.last_known_live);
@@ -323,6 +333,7 @@ export function LiveWatchGrid() {
                 setUnmutedId((cur) => (cur === s.id ? null : s.id))
               }
               forceLight={isMobile}
+              obsOnline={!!obsBySlug.get(s.slug)}
             />
           ))}
         </div>
