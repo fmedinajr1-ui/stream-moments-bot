@@ -259,6 +259,14 @@ function LibraryPage() {
                       CAPCUT
                     </button>
                   </div>
+                  <button
+                    onClick={() => regrabMut.mutate(c.id)}
+                    disabled={regrabMut.isPending}
+                    className="mt-2 text-[10px] font-mono tracking-widest text-muted-foreground hover:text-blood underline underline-offset-2 disabled:opacity-50 self-start"
+                    title="Discard the current render and capture a fresh slice from the live edge"
+                  >
+                    ↻ RE-GRAB FROM LIVE
+                  </button>
                 </div>
               </article>
             );
