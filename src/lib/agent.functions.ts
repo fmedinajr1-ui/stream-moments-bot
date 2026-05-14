@@ -196,6 +196,31 @@ export const stopForceWatchSource = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const clipNowFromLive = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        sourceId: z.string().uuid(),
+        durationSec: z.number().int().min(10).max(120).default(30),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { data: src, error } = await supabaseAdmin
+      .from("sources")
+      .select("id, slug")
+      .eq("id", data.sourceId)
+      .maybeSingle();
+    if (error || !src) throw new Error(error?.message ?? "source not found");
+
+    const res = await createSpikeClip({
+      sourceId: src.id,
+      slug: src.slug,
+      hookCaption: `${src.slug.toUpperCase()} LIVE CAPTURE`,
+    });
+    return res;
+  });
+
 export const getLatestTrainingExportUrl = createServerFn({
   method: "GET",
 }).handler(async () => {
