@@ -266,7 +266,7 @@ export const listLiveChatActivity = createServerFn({ method: "GET" }).handler(
     }
     const lastGrabById = new Map<string, any>();
     for (const g of lastGrabs ?? []) {
-      if (!lastGrabById.has(g.source_id)) lastGrabById.set(g.source_id, g);
+      if (g.source_id && !lastGrabById.has(g.source_id)) lastGrabById.set(g.source_id, g);
     }
     return {
       sources: (sources ?? []).map((s) => {
