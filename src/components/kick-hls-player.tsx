@@ -35,6 +35,8 @@ export function KickHlsPlayer({
   // Resolve playback URL.
   useEffect(() => {
     let alive = true;
+    setFailed(false);
+    setPlaybackUrl(null);
     onResolveStatus?.("loading");
 
     (async () => {
@@ -99,6 +101,14 @@ export function KickHlsPlayer({
 
     let hls: any = null;
     let cancelled = false;
+    const failToIframe = () => {
+      if (cancelled) return;
+      setFailed(true);
+      onResolveStatus?.("failed");
+    };
+    const fallbackTimer = window.setTimeout(() => {
+      if (video.readyState < 2) failToIframe();
+    }, 8000);
 
     (async () => {
       // Safari has native HLS.
@@ -110,6 +120,7 @@ export function KickHlsPlayer({
           /* autoplay block ok */
         }
         if (!cancelled) {
+          window.clearTimeout(fallbackTimer);
           onVideoReady?.(video);
           onResolveStatus?.("playing");
         }
@@ -120,8 +131,7 @@ export function KickHlsPlayer({
       if (cancelled) return;
       const Hls = mod.default;
       if (!Hls.isSupported()) {
-        setFailed(true);
-        onResolveStatus?.("failed");
+        failToIframe();
         return;
       }
       hls = new Hls({
@@ -133,20 +143,29 @@ export function KickHlsPlayer({
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         video.play().catch(() => undefined);
+      });
+      const markPlaying = () => {
+        window.clearTimeout(fallbackTimer);
         onVideoReady?.(video);
         onResolveStatus?.("playing");
-      });
+      };
+      video.addEventListener("loadeddata", markPlaying, { once: true });
       hls.on(Hls.Events.ERROR, (_e: any, data: any) => {
-        if (data?.fatal) {
+        const blocked =
+          data?.response?.code === 401 ||
+          data?.response?.code === 403 ||
+          data?.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+          data?.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT;
+        if (data?.fatal || blocked) {
           console.warn("[kick-hls-player] fatal", data);
-          setFailed(true);
-          onResolveStatus?.("failed");
+          failToIframe();
         }
       });
     })();
 
     return () => {
       cancelled = true;
+      window.clearTimeout(fallbackTimer);
       if (hls) {
         try {
           hls.destroy();
