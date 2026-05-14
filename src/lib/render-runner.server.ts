@@ -97,7 +97,7 @@ export async function startRenderForClip(clipId: string) {
     playlistUrl,
     durationSec: duration,
     startOffsetSec,
-    storagePath: `raw/${clipId}.ts`,
+    storagePath: `raw/${clipId}.mp4`,
   });
   if (!cap.ok || !cap.signedUrl) {
     await supabaseAdmin

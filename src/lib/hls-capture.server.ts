@@ -99,7 +99,7 @@ export async function captureHlsToStorage(opts: {
   playlistUrl: string;
   durationSec: number;
   startOffsetSec?: number | null;
-  storagePath: string; // e.g. "raw/{clipId}.ts"
+  storagePath: string; // e.g. "raw/{clipId}.mp4"
 }): Promise<HlsCaptureResult> {
   const playlist = await fetchText(opts.playlistUrl);
   if (!playlist) {
@@ -186,7 +186,11 @@ export async function captureHlsToStorage(opts: {
   const { error: upErr } = await supabaseAdmin.storage
     .from("clips")
     .upload(opts.storagePath, concat, {
-      contentType: "video/mp2t",
+      // Shotstack rejects .ts URLs at validation time, but it can ingest this
+      // transport-stream payload when it is handed over as a transcodable video.
+      contentType: opts.storagePath.endsWith(".mp4")
+        ? "video/mp4"
+        : "video/mp2t",
       upsert: true,
     });
   if (upErr) {
