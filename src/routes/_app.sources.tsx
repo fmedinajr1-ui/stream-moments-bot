@@ -10,7 +10,9 @@ import {
   runPollNow,
 } from "@/lib/clips.functions";
 import {
+  forceWatchSource,
   getLatestChatVelocity,
+  stopForceWatchSource,
   updateSourceSensitivity,
 } from "@/lib/agent.functions";
 
