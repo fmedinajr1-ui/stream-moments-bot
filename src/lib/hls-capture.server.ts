@@ -216,30 +216,63 @@ export async function captureHlsToStorage(opts: {
 
 /**
  * Fetch a Kick channel's live playback URL (master m3u8) if currently live.
+ * Kick sits behind Cloudflare; a single naive fetch often returns a 403
+ * "Request blocked by security policy". We try a few endpoint/header combos
+ * before giving up.
  */
 export async function getKickLivePlaybackUrl(
   slug: string,
 ): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
-      {
-        headers: {
-          "User-Agent": UA,
-          Accept: "application/json",
-          Referer: `https://kick.com/${slug}`,
-        },
-      },
-    );
-    if (!res.ok) return null;
-    const data: any = await res.json();
-    return (
-      data?.playback_url ??
-      data?.livestream?.playback_url ??
-      data?.livestream?.thumbnail?.src ??
-      null
-    );
-  } catch {
-    return null;
+  const headers = {
+    "User-Agent": UA,
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    Referer: `https://kick.com/${slug}`,
+    Origin: "https://kick.com",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "Cache-Control": "no-cache",
+  };
+
+  const endpoints = [
+    `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+    `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
+    `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/livestream`,
+  ];
+
+  for (const url of endpoints) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(url, { headers });
+        if (!res.ok) {
+          console.warn(
+            `[kick-live] ${url} attempt ${attempt + 1} → ${res.status}`,
+          );
+          await new Promise((r) => setTimeout(r, 250));
+          continue;
+        }
+        const data: any = await res.json();
+        const playback =
+          data?.playback_url ??
+          data?.livestream?.playback_url ??
+          data?.data?.playback_url ??
+          data?.data?.livestream?.playback_url ??
+          null;
+        if (playback && /\.m3u8/i.test(playback)) {
+          return playback;
+        }
+        // If the channel is offline, the response is well-formed but has no
+        // playback URL — short-circuit and don't retry.
+        if (data && (data.id || data.slug || data.user_id)) {
+          return null;
+        }
+      } catch (err) {
+        console.warn(`[kick-live] ${url} threw`, err);
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
   }
+  return null;
 }
