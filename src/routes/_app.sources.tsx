@@ -298,6 +298,13 @@ function SourcesPage() {
             })()}
             <div className="mt-3 flex gap-2">
               <button
+                onClick={() => clipNowMut.mutate(s.id)}
+                disabled={clipNowMut.isPending}
+                className="flex-1 text-[10px] font-mono tracking-widest bg-gold text-background px-2 py-1.5 hover:opacity-90 disabled:opacity-50"
+              >
+                {clipNowMut.isPending ? "CLIPPING…" : "CLIP NOW"}
+              </button>
+              <button
                 onClick={() => pollMut.mutate(s.id)}
                 disabled={pollMut.isPending}
                 className="flex-1 text-[10px] font-mono tracking-widest border border-blood/60 px-2 py-1.5 hover:bg-blood/10 disabled:opacity-50"
