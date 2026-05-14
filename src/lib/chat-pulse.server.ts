@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sampleKickChat } from "@/lib/kick-ws.server";
 import { createSpikeClip } from "@/lib/spike-clip.server";
+import { enqueueObsSave } from "@/lib/obs-trigger.server";
 
 export type ChatPulseSummary = {
   polled: number;
@@ -148,6 +149,16 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
 
       let triggered = false;
       let skipReason: string | undefined;
+
+      if (isSpike && velRow) {
+        // Always nudge OBS watcher (no-op if not connected).
+        await enqueueObsSave({
+          sourceId: src.id,
+          sourceSlug: src.slug,
+          reason: "chat_spike",
+          payload: { spike_ratio: ratio, msgs_per_sec: mps, velocity_id: velRow.id },
+        });
+      }
 
       if (isSpike && velRow && autoEnabled) {
         // Per-source cooldown — skip if we already auto-grabbed within window.

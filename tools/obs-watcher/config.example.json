@@ -1,0 +1,10 @@
+{
+  "appUrl": "https://stream-moments-bot.lovable.app",
+  "uploadSecret": "PASTE_OBS_UPLOAD_SECRET_HERE",
+  "sourceSlug": "your-kick-channel-slug",
+  "obsReplayDir": "/Users/you/Movies",
+  "obsWebSocket": {
+    "url": "ws://127.0.0.1:4455",
+    "password": "your-obs-websocket-password"
+  }
+}

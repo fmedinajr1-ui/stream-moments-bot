@@ -19,6 +19,8 @@ import { Route as AppLibraryRouteImport } from './routes/_app.library'
 import { Route as AppCampaignsRouteImport } from './routes/_app.campaigns'
 import { Route as AppAnalyticsRouteImport } from './routes/_app.analytics'
 import { Route as ApiPublicUploadClipRouteImport } from './routes/api/public/upload-clip'
+import { Route as ApiPublicObsUploadRouteImport } from './routes/api/public/obs-upload'
+import { Route as ApiPublicObsTriggerPollRouteImport } from './routes/api/public/obs-trigger-poll'
 import { Route as ApiPublicHooksShotstackRouteImport } from './routes/api/public/hooks/shotstack'
 import { Route as ApiPublicCronResolveMomentsRouteImport } from './routes/api/public/cron/resolve-moments'
 import { Route as ApiPublicCronPollKickRouteImport } from './routes/api/public/cron/poll-kick'
@@ -75,6 +77,16 @@ const ApiPublicUploadClipRoute = ApiPublicUploadClipRouteImport.update({
   path: '/api/public/upload-clip',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicObsUploadRoute = ApiPublicObsUploadRouteImport.update({
+  id: '/api/public/obs-upload',
+  path: '/api/public/obs-upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicObsTriggerPollRoute = ApiPublicObsTriggerPollRouteImport.update({
+  id: '/api/public/obs-trigger-poll',
+  path: '/api/public/obs-trigger-poll',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksShotstackRoute = ApiPublicHooksShotstackRouteImport.update({
   id: '/api/public/hooks/shotstack',
   path: '/api/public/hooks/shotstack',
@@ -117,6 +129,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
+  '/api/public/obs-trigger-poll': typeof ApiPublicObsTriggerPollRoute
+  '/api/public/obs-upload': typeof ApiPublicObsUploadRoute
   '/api/public/upload-clip': typeof ApiPublicUploadClipRoute
   '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
@@ -134,6 +148,8 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
   '/': typeof AppIndexRoute
+  '/api/public/obs-trigger-poll': typeof ApiPublicObsTriggerPollRoute
+  '/api/public/obs-upload': typeof ApiPublicObsUploadRoute
   '/api/public/upload-clip': typeof ApiPublicUploadClipRoute
   '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
@@ -153,6 +169,8 @@ export interface FileRoutesById {
   '/_app/sources': typeof AppSourcesRoute
   '/_app/template': typeof AppTemplateRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/obs-trigger-poll': typeof ApiPublicObsTriggerPollRoute
+  '/api/public/obs-upload': typeof ApiPublicObsUploadRoute
   '/api/public/upload-clip': typeof ApiPublicUploadClipRoute
   '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
@@ -172,6 +190,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/template'
+    | '/api/public/obs-trigger-poll'
+    | '/api/public/obs-upload'
     | '/api/public/upload-clip'
     | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
@@ -189,6 +209,8 @@ export interface FileRouteTypes {
     | '/sources'
     | '/template'
     | '/'
+    | '/api/public/obs-trigger-poll'
+    | '/api/public/obs-upload'
     | '/api/public/upload-clip'
     | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
@@ -207,6 +229,8 @@ export interface FileRouteTypes {
     | '/_app/sources'
     | '/_app/template'
     | '/_app/'
+    | '/api/public/obs-trigger-poll'
+    | '/api/public/obs-upload'
     | '/api/public/upload-clip'
     | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
@@ -218,6 +242,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  ApiPublicObsTriggerPollRoute: typeof ApiPublicObsTriggerPollRoute
+  ApiPublicObsUploadRoute: typeof ApiPublicObsUploadRoute
   ApiPublicUploadClipRoute: typeof ApiPublicUploadClipRoute
   ApiPublicCronBackfillRoute: typeof ApiPublicCronBackfillRoute
   ApiPublicCronChatPulseRoute: typeof ApiPublicCronChatPulseRoute
@@ -299,6 +325,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicUploadClipRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/obs-upload': {
+      id: '/api/public/obs-upload'
+      path: '/api/public/obs-upload'
+      fullPath: '/api/public/obs-upload'
+      preLoaderRoute: typeof ApiPublicObsUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/obs-trigger-poll': {
+      id: '/api/public/obs-trigger-poll'
+      path: '/api/public/obs-trigger-poll'
+      fullPath: '/api/public/obs-trigger-poll'
+      preLoaderRoute: typeof ApiPublicObsTriggerPollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/shotstack': {
       id: '/api/public/hooks/shotstack'
       path: '/api/public/hooks/shotstack'
@@ -370,6 +410,8 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  ApiPublicObsTriggerPollRoute: ApiPublicObsTriggerPollRoute,
+  ApiPublicObsUploadRoute: ApiPublicObsUploadRoute,
   ApiPublicUploadClipRoute: ApiPublicUploadClipRoute,
   ApiPublicCronBackfillRoute: ApiPublicCronBackfillRoute,
   ApiPublicCronChatPulseRoute: ApiPublicCronChatPulseRoute,

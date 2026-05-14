@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { resolvePendingMoments } from "@/lib/marked-moments.server";
+import { enqueueObsSave } from "@/lib/obs-trigger.server";
 
 /** Mark a live moment from the dashboard. Resolved later from the VOD. */
 export const markMoment = createServerFn({ method: "POST" })
@@ -27,6 +28,22 @@ export const markMoment = createServerFn({ method: "POST" })
       .select("id, marked_at")
       .single();
     if (error) throw new Error(error.message);
+
+    // Look up slug so we can also nudge OBS watcher (live capture path).
+    const { data: src } = await supabaseAdmin
+      .from("sources")
+      .select("slug")
+      .eq("id", data.sourceId)
+      .maybeSingle();
+    if (src?.slug) {
+      await enqueueObsSave({
+        sourceId: data.sourceId,
+        sourceSlug: src.slug,
+        reason: "mark_moment",
+        payload: { moment_id: row.id, duration_sec: data.durationSec, caption: data.caption ?? null },
+      });
+    }
+
     return { ok: true, id: row.id, markedAt: row.marked_at };
   });
 

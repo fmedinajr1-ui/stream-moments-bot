@@ -7,6 +7,7 @@ import {
   listLiveChatActivity,
 } from "@/lib/clips.functions";
 import { markMoment, listMarkedMoments } from "@/lib/marked-moments.functions";
+import { listObsClients } from "@/lib/obs-status.functions";
 import { KickHlsPlayer } from "@/components/kick-hls-player";
 
 type LiveSource = {
@@ -46,12 +47,14 @@ function StreamTile({
   unmuted,
   onUnmute,
   forceLight,
+  obsOnline,
 }: {
   source: LiveSource;
   activity: any;
   unmuted: boolean;
   onUnmute: () => void;
   forceLight: boolean;
+  obsOnline: boolean;
 }) {
   const markFn = useServerFn(markMoment);
   const [caption, setCaption] = useState("");
@@ -174,15 +177,31 @@ function StreamTile({
             disabled={markMut.isPending}
             className="flex-[2] py-2 text-[10px] font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50 min-h-[36px]"
           >
-            {markMut.isPending ? "…" : "● MARK MOMENT"}
+            {markMut.isPending
+              ? "…"
+              : obsOnline
+                ? "● MARK MOMENT (OBS)"
+                : "● MARK MOMENT (VOD)"}
           </button>
         </div>
-        {lastMark && (
-          <p className="text-[10px] font-mono text-muted-foreground tracking-widest">
-            LAST MARK · {Math.max(1, Math.round((Date.now() - lastMark) / 1000))}s
-            ago — RESOLVES FROM VOD
-          </p>
-        )}
+        <div className="flex items-center justify-between gap-2">
+          {lastMark && (
+            <p className="text-[10px] font-mono text-muted-foreground tracking-widest">
+              LAST MARK ·{" "}
+              {Math.max(1, Math.round((Date.now() - lastMark) / 1000))}s ago
+            </p>
+          )}
+          <span
+            className={`text-[10px] font-mono tracking-widest px-2 py-0.5 border ml-auto ${
+              obsOnline
+                ? "border-emerald-500/60 text-emerald-400"
+                : "border-muted-foreground/40 text-muted-foreground"
+            }`}
+            title={obsOnline ? "OBS watcher polled within the last 60s" : "OBS watcher offline — falling back to VOD resolver"}
+          >
+            OBS · {obsOnline ? "ONLINE" : "OFFLINE"}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -252,6 +271,16 @@ export function LiveWatchGrid() {
     queryFn: () => fetchActivity(),
     refetchInterval: 15_000,
   });
+  const fetchObs = useServerFn(listObsClients);
+  const { data: obsData } = useQuery({
+    queryKey: ["obs-clients"],
+    queryFn: () => fetchObs(),
+    refetchInterval: 20_000,
+  });
+  const obsBySlug = new Map<string, boolean>();
+  for (const c of (obsData?.clients ?? []) as Array<{ slug: string; online: boolean }>) {
+    obsBySlug.set(c.slug, c.online);
+  }
 
   const sources = (data?.sources ?? []) as LiveSource[];
   const liveSources = sources.filter((s) => s.last_known_live);
@@ -304,6 +333,7 @@ export function LiveWatchGrid() {
                 setUnmutedId((cur) => (cur === s.id ? null : s.id))
               }
               forceLight={isMobile}
+              obsOnline={!!obsBySlug.get(s.slug)}
             />
           ))}
         </div>
