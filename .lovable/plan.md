@@ -1,62 +1,75 @@
-# Live Watch upgrades + Clip History Timeline
+# Auto-grab on chat spikes (and make the spike tracker actually fire)
 
-Three additions to the dashboard (`src/routes/_app.index.tsx`), all powered by data we already collect.
+## What's working vs. not
 
-## 1. Multi-stream Live Watch (see all live at once)
+**Working:** chat-pulse cron fires every 30s, hits all 3 live sources (rampagejackson, adrienbroner, deenthegreat), writes a `chat_velocity` row per source, and the auto-grab call (`createSpikeClip`) is already wired in `chat-pulse.server.ts` to fire when `is_spike = true`.
 
-Today Live Watch shows ONE iframe at a time via a dropdown. Switch to a grid:
+**Broken:** every `chat_velocity` row has `msgs_per_sec = 0`. The Kick WebSocket sampler (`src/lib/kick-ws.server.ts`) connects but never receives chat frames — so spike_ratio is 0, `is_spike` is never true, and no auto-grab ever triggers. That's why the Spike Tracker shows `0.0/s` and `0 SPIKES` for every streamer.
 
-- Render an iframe tile for **every source where `last_known_live = true`** (or `force_live_until > now`).
-- Layout: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, each tile `aspect-video`.
-- Each tile gets its own header strip with: name, LIVE dot, viewer count, the existing UNMUTE toggle (per-tile state — only one unmuted at a time, clicking unmute on tile B mutes tile A so audio doesn't pile up).
-- Each tile keeps its own GRAB CLIP button + caption input directly underneath (compact form), so we can clip from any stream without switching focus.
-- Offline sources collapse into a small "OFFLINE (3): ab, rampage, ..." footer row with a "force live" link kept for later.
-- Old single-stream dropdown removed.
+Worker logs show the cron requests returning 200 but **none** of the `[kick-ws] upgrade…` / `[kick-ws] connected…` / `[kick-ws] first msg…` console lines appear. That means the upgrade is short-circuiting silently or the WS closes before Pusher's `connection_established` arrives.
 
-## 2. Live chat-spike activity overlay + spike tracker
+## Fix plan
 
-We already poll chat with `runChatPulse` every minute and write `chat_velocity` rows (msgs/sec, baseline, spike_ratio, is_spike, sample_messages). Surface that:
+### 1. Repair the Kick chat sampler
 
-**Per-tile spike meter (overlay on each Live Watch iframe):**
-- Bottom-left badge showing current `msgs_per_sec` and a thin horizontal bar colored by `spike_ratio`:
-  - grey (<1.2x), gold (1.2–2x), blood-red pulsing (≥2x = spike)
-- Updates every 15s by querying the latest `chat_velocity` row per source.
+Add diagnostic logging and a working transport. Likely root cause: Pusher's app key / cluster string we're using (`ws-us2.pusher.com/app/eb1d5f283081a78b932c`) is stale or Cloudflare's outbound WS upgrade isn't completing the Pusher handshake before we send `subscribe`.
 
-**New "SPIKE TRACKER" panel** under Live Watch:
-- Horizontal sparkline strip per live source showing the last ~30 minutes of `msgs_per_sec` (one row per source), with red dots where `is_spike = true`.
-- Hovering a red dot shows: timestamp, ratio, top sample message, and — if a clip was created from that spike (`matched_velocity_id`) — a link to it.
-- "TRACK ALL" toggle: when on, refreshes every 10s; off = static.
+Steps:
+- Re-fetch the current Pusher app key + cluster from `https://kick.com/api/v2/channels/<slug>` (the Kick page bootstrap exposes them as `chatroom.channel_id`, plus a `pusher` config the modern frontend uses). Cache per-slug for 1h.
+- After upgrade, **wait** for `pusher:connection_established` before subscribing (already done) but also tolerate the case where the upgrade returns 200 instead of 101 by falling back to a polled REST endpoint (`/api/v2/channels/<slug>/messages?cursor=...`) for chat counts. The REST fallback gives us a real `msgs_per_sec` even when WS is blocked from Workers.
+- Persist the sampler outcome to `audit_log` (`action='chat_pulse_sample'`, details with `connected`, `msg_count`, `error`) so we can see in the UI whether each tick worked.
 
-New server fn `listLiveChatActivity` in `src/lib/clips.functions.ts`:
-- Returns, per live source: latest velocity row + last 30 min of `(created_at, msgs_per_sec, is_spike, spike_ratio, clip_id)` rows.
-- Powers both the per-tile badge and the Spike Tracker sparklines.
+### 2. Make thresholds configurable
 
-## 3. Clip History Timeline
+Today the threshold lives in `chat_pulse.server.ts` as `is_spike = ratio >= sensitivity AND mps >= 0.5` where `sensitivity` comes from `sources.spike_sensitivity` (default 2.0). Add three more knobs to `agent_settings`:
 
-New panel "RECENT GRABS" between the status bar and Live Watch:
+- `spike_window_sec` (default 60) — look-back window for "spike within last N seconds". Computed as `recent_msgs / window_sec` and compared to baseline.
+- `spike_min_mps` (default 0.5) — floor so quiet streams don't trigger on noise.
+- `auto_grab_cooldown_sec` (default 180) — minimum seconds between auto-grabs **per source**. Without this a hot stream creates a clip every 30s.
 
-- Horizontal scrolling timeline (newest left), one chip per clip from the last 24h.
-- Each chip: thumbnail (or placeholder), `HH:MM:SS` timestamp, source name, hook caption truncated to 40 chars, and a tiny status dot (processing / approved / rejected).
-- Click → opens the clip in the existing queue card (scroll-to + focus).
-- Auto-refreshes every 30s.
+Migration adds the columns. Settings page (`_app.settings.tsx`) gets number inputs for these.
 
-New server fn `listRecentClips` (last 24h, all statuses, limit 40) in `src/lib/clips.functions.ts`. Reuses existing `clips` columns — no schema changes.
+### 3. Per-source cooldown + audit trail
+
+Before calling `createSpikeClip`, query `clips.created_at` for the latest auto-grabbed clip on this source (we can detect auto vs manual by `score_rationale LIKE 'Live spike-triggered%'` or add an `auto_grabbed` boolean column — recommend the column for clarity). If `now - last_auto < cooldown`, skip and log `audit_log` row `action='spike_grab_skipped_cooldown'`.
+
+When a grab does fire: `audit_log` row `action='spike_grab_triggered'` with the spike ratio, msgs/sec, and the resulting clip_id.
+
+### 4. Surface it in the UI
+
+In `src/components/spike-tracker.tsx`:
+- Add an "ARMED" badge per source showing the current threshold (e.g. "ARMED · 2.0x · ≥0.5/s · 180s cooldown") pulled from `agent_settings` + `sources.spike_sensitivity`.
+- Add a "LAST AUTO-GRAB" row per source ("12s ago — clip in queue", or "—" if none).
+- The chat-pulse activity row already shows ratio coloring (gold ≥1.2x, blood ≥2x); add a small flame icon when an auto-grab fired in the last 5 min.
+
+In `src/components/live-watch-grid.tsx`, the per-tile chat badge already exists — add a "🔥 AUTO" tag that flashes when `auto_grabbed` clip appears for this source.
+
+### 5. Manual verification path
+
+Add a "TEST AUTO-GRAB" button in Settings that:
+- Picks one live source.
+- Inserts a synthetic `chat_velocity` row with `is_spike=true, spike_ratio=3.0, msgs_per_sec=2.0`.
+- Calls `createSpikeClip` directly.
+- Returns the new clip id so you can watch it appear in the timeline + render.
+
+Lets us prove the auto-grab pipeline end-to-end without waiting for a real spike.
 
 ## Files touched
 
-- `src/lib/clips.functions.ts` — add `listLiveChatActivity` + `listRecentClips`.
-- `src/routes/_app.index.tsx` — replace `LiveWatchPanel` with multi-stream grid; add `SpikeTrackerPanel` and `RecentGrabsTimeline` components in the same file (or split into `src/components/live-watch-grid.tsx`, `spike-tracker.tsx`, `recent-grabs-timeline.tsx` for readability — recommend splitting).
+- `src/lib/kick-ws.server.ts` — refresh Pusher config per slug, add REST fallback.
+- `src/lib/chat-pulse.server.ts` — read new threshold settings, enforce cooldown, write audit rows.
+- `src/lib/clips.functions.ts` — add `getSpikeSettings`, `updateSpikeSettings`, `testAutoGrab` server fns; extend `listLiveChatActivity` to return last auto-grab per source.
+- `src/components/spike-tracker.tsx` — ARMED badge, last-auto-grab row, flame indicator.
+- `src/components/live-watch-grid.tsx` — auto-grab flash on tile.
+- `src/routes/_app.settings.tsx` — threshold inputs + TEST button.
+- DB migration: add `agent_settings.spike_window_sec`, `spike_min_mps`, `auto_grab_cooldown_sec`; add `clips.auto_grabbed boolean default false`.
 
 ## Out of scope
 
-- No DB migrations (all data already collected).
-- No changes to chat-pulse cadence (still every minute via cron).
-- Not auto-pausing/muting tiles when many streams are live — single-unmute rule is enough.
+- Per-source threshold overrides beyond `spike_sensitivity` (already exists). Global is enough for now.
+- Smarter "context-aware" spike (e.g. reading sample messages with AI to decide if it's a real moment). The user already mentioned wanting AI training elsewhere — leave for later.
+- Replacing the WS sampler with a long-running connection (Workers don't support that cleanly — would need a Durable Object).
 
 ## Open question
 
-Streaming 5+ Kick iframes simultaneously is heavy on CPU/bandwidth. Two options:
-- **A.** Render all live iframes (best situational awareness, may chug on iPhone).
-- **B.** Render thumbnails/poster images for all live sources, only mount the iframe when you click "WATCH" on a tile (lighter).
-
-Default: **A** on desktop, auto-fallback to **B** on `<sm` viewport. Say the word if you want B everywhere.
+If the WS sampler can't be fixed from Cloudflare Workers and the REST fallback is too coarse (Kick doesn't expose a chat-history REST endpoint without auth), the alternative is **viewer-count spikes** instead of chat-velocity spikes — `kick.com/api/v2/channels/<slug>` returns live viewer count, easy to baseline and detect surges. Less precise but reliable. Want me to add that as a parallel signal so auto-grab works regardless of chat?
