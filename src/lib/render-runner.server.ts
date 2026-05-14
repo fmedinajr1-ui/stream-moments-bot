@@ -21,6 +21,65 @@ export async function startRenderForClip(clipId: string) {
     return { ok: true, alreadyRendered: true };
   }
 
+  // FAST PATH: clip already has a raw video uploaded from the browser
+  // recorder. Skip the live/VOD probe entirely — just sign the storage URL
+  // and submit straight to Shotstack.
+  if ((clip as any).raw_storage_path) {
+    const path = (clip as any).raw_storage_path as string;
+    const duration = Math.min(60, Math.max(5, clip.duration_seconds ?? 30));
+
+    const { data: signed, error: signErr } = await supabaseAdmin.storage
+      .from("clips")
+      .createSignedUrl(path, 60 * 60 * 6);
+    if (signErr || !signed?.signedUrl) {
+      await supabaseAdmin.from("render_jobs").insert({
+        clip_id: clipId,
+        status: "failed",
+        error_message: `sign raw upload failed: ${signErr?.message ?? "unknown"}`,
+      });
+      return { ok: false, error: "sign failed" };
+    }
+
+    const { data: job, error: jobErr } = await supabaseAdmin
+      .from("render_jobs")
+      .insert({
+        clip_id: clipId,
+        status: "pending",
+        provider: "shotstack",
+        vod_url: signed.signedUrl,
+        start_offset_sec: 0,
+        duration_sec: duration,
+      })
+      .select()
+      .single();
+    if (jobErr || !job) throw new Error(jobErr?.message ?? "job insert failed");
+
+    const callback = `${APP_BASE}/api/public/hooks/shotstack?job=${job.id}&secret=${encodeURIComponent(process.env.SHOTSTACK_WEBHOOK_SECRET ?? "")}`;
+    const sub = await submitRender({
+      sourceUrl: signed.signedUrl,
+      trimStart: 0,
+      duration,
+      caption: clip.hook_caption ?? clip.title ?? "",
+      callbackUrl: callback,
+    });
+    if (!sub.ok || !sub.renderId) {
+      await supabaseAdmin
+        .from("render_jobs")
+        .update({
+          status: "failed",
+          error_message: sub.error ?? "Shotstack submit failed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      return { ok: false, error: sub.error };
+    }
+    await supabaseAdmin
+      .from("render_jobs")
+      .update({ status: "rendering", provider_render_id: sub.renderId })
+      .eq("id", job.id);
+    return { ok: true, jobId: job.id, renderId: sub.renderId, mode: "browser" };
+  }
+
   let targetIso = clip.stream_timestamp as string | null;
   if (clip.matched_velocity_id) {
     const { data: vel } = await supabaseAdmin
