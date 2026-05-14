@@ -208,7 +208,7 @@ function QueuePage() {
         <button
           onClick={() => pauseMut.mutate(!isPaused)}
           disabled={pauseMut.isPending}
-          className="ml-auto px-3 py-1.5 text-[10px] font-mono tracking-widest border border-blood/60 text-foreground hover:bg-blood/10 disabled:opacity-50"
+          className="w-full sm:w-auto sm:ml-auto px-3 py-2.5 text-[10px] font-mono tracking-widest border border-blood/60 text-foreground hover:bg-blood/10 disabled:opacity-50 min-h-[40px]"
         >
           {isPaused ? "RESUME AGENT" : "PAUSE AGENT"}
         </button>
