@@ -215,7 +215,11 @@ function QueuePage() {
         </button>
       </div>
 
-      <LiveWatchPanel />
+      <RecentGrabsTimeline />
+
+      <LiveWatchGrid />
+
+      <SpikeTrackerPanel />
 
       <div className="flex flex-wrap gap-3 sm:gap-4 items-stretch sm:items-center bg-panel border border-blood/40 px-3 sm:px-4 py-3">
         <div className="flex items-center gap-2 w-full sm:w-auto">
