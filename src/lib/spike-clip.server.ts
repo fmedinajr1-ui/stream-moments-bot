@@ -79,6 +79,7 @@ export async function createSpikeClip(input: SpikeClipInput) {
       chat_spike_ratio: input.spikeRatio ?? null,
       matched_velocity_id: input.matchedVelocityId ?? null,
       status: "processing",
+      auto_grabbed: !!input.autoGrabbed,
       stream_timestamp: ts,
       duration_seconds: 30,
     })
