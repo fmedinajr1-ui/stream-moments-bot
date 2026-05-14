@@ -321,3 +321,176 @@ function QueuePage() {
     </div>
   );
 }
+
+function LiveWatchPanel() {
+  const fetchLive = useServerFn(listLiveSources);
+  const grab = useServerFn(manualGrabClip);
+  const { data } = useQuery({
+    queryKey: ["live-sources"],
+    queryFn: () => fetchLive(),
+    refetchInterval: 30_000,
+  });
+  const sources = (data?.sources ?? []) as Array<{
+    id: string;
+    slug: string;
+    display_name: string;
+    last_known_live: boolean;
+    avg_viewers: number | null;
+  }>;
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [caption, setCaption] = useState("");
+  const [duration, setDuration] = useState(30);
+  const [lastGrab, setLastGrab] = useState<{ at: number; caption: string } | null>(null);
+
+  // Default to first live source, else first source
+  useEffect(() => {
+    if (selectedId || !sources.length) return;
+    const live = sources.find((s) => s.last_known_live);
+    setSelectedId((live ?? sources[0]).id);
+  }, [sources, selectedId]);
+
+  const selected = sources.find((s) => s.id === selectedId) ?? null;
+
+  const grabMut = useMutation({
+    mutationFn: () =>
+      grab({
+        data: {
+          sourceId: selected!.id,
+          caption: caption.trim() || undefined,
+          durationSec: duration,
+        },
+      }),
+    onSuccess: (res: any) => {
+      if (res?.ok) {
+        toast.success("CLIP QUEUED — RENDERING");
+        setLastGrab({
+          at: Date.now(),
+          caption: caption.trim() || `${selected!.display_name} grab`,
+        });
+        setCaption("");
+      } else {
+        toast.error(res?.error ?? "Grab failed");
+      }
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Grab failed"),
+  });
+
+  if (!sources.length) return null;
+
+  return (
+    <section className="bg-panel border border-blood/40 scanlines">
+      <div className="px-4 py-3 border-b border-blood/40 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <h3 className="font-display text-lg sm:text-xl tracking-widest text-foreground">
+            LIVE WATCH
+          </h3>
+          {selected && (
+            <span className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  selected.last_known_live
+                    ? "bg-blood animate-pulse-dot"
+                    : "bg-muted-foreground"
+                }`}
+              />
+              <span className={selected.last_known_live ? "text-blood" : "text-muted-foreground"}>
+                {selected.last_known_live ? "LIVE" : "OFFLINE"}
+              </span>
+              {selected.avg_viewers ? (
+                <span className="text-muted-foreground">
+                  • {selected.avg_viewers.toLocaleString()} viewers
+                </span>
+              ) : null}
+            </span>
+          )}
+        </div>
+        <select
+          value={selectedId ?? ""}
+          onChange={(e) => setSelectedId(e.target.value)}
+          className="bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-1.5 tracking-wider focus:border-blood focus:outline-none"
+        >
+          {sources.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.last_known_live ? "● " : "○ "}
+              {s.display_name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-0">
+        <div className="aspect-video bg-black border-r border-blood/20">
+          {selected ? (
+            <iframe
+              key={selected.slug}
+              src={`https://player.kick.com/${selected.slug}?muted=true&autoplay=true`}
+              allow="autoplay; fullscreen"
+              allowFullScreen
+              className="w-full h-full"
+              title={`${selected.display_name} live`}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center font-display text-2xl text-blood/40">
+              SELECT A STREAMER
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 flex flex-col gap-3">
+          <label className="text-[10px] font-mono tracking-widest text-muted-foreground">
+            CAPTION (OPTIONAL)
+          </label>
+          <input
+            type="text"
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            maxLength={80}
+            placeholder="e.g. NEAR-MISS ON HIGHWAY"
+            className="bg-background border border-blood/40 text-foreground text-xs font-mono px-2 py-2 tracking-wider focus:border-blood focus:outline-none"
+          />
+
+          <label className="text-[10px] font-mono tracking-widest text-muted-foreground mt-1">
+            DURATION
+          </label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {[15, 30, 45].map((d) => {
+              const active = duration === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDuration(d)}
+                  className={`py-2 text-xs font-mono tracking-widest border transition-colors ${
+                    active
+                      ? "bg-blood text-blood-foreground border-blood"
+                      : "border-blood/40 text-foreground hover:bg-blood/10"
+                  }`}
+                >
+                  {d}s
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => grabMut.mutate()}
+            disabled={!selected || grabMut.isPending}
+            className="mt-auto py-3 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {grabMut.isPending ? "GRABBING…" : "▶ GRAB CLIP NOW"}
+          </button>
+
+          {lastGrab && (
+            <p className="text-[10px] font-mono text-muted-foreground tracking-widest line-clamp-2">
+              LAST GRAB: {Math.max(1, Math.round((Date.now() - lastGrab.at) / 1000))}s ago
+              <br />
+              <span className="text-foreground">{lastGrab.caption}</span>
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
