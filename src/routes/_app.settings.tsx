@@ -8,6 +8,11 @@ import {
   updateAgentSettings,
   getLatestTrainingExportUrl,
 } from "@/lib/agent.functions";
+import {
+  getSpikeSettings,
+  updateSpikeSettings,
+  testAutoGrab,
+} from "@/lib/clips.functions";
 
 export const Route = createFileRoute("/_app/settings")({
   component: SettingsPage,
@@ -167,7 +172,160 @@ function SettingsPage() {
         {save.isPending ? "SAVING…" : "SAVE SETTINGS"}
       </button>
 
+      <AutoGrabPanel />
+
       <TrainingExport />
+    </div>
+  );
+}
+
+function AutoGrabPanel() {
+  const fetchSpike = useServerFn(getSpikeSettings);
+  const updateSpike = useServerFn(updateSpikeSettings);
+  const test = useServerFn(testAutoGrab);
+  const { data, refetch } = useQuery({
+    queryKey: ["spike-settings"],
+    queryFn: () => fetchSpike(),
+  });
+  const s = (data as any)?.settings;
+  const [windowSec, setWindowSec] = useState(60);
+  const [minMps, setMinMps] = useState(0.5);
+  const [cooldown, setCooldown] = useState(180);
+  const [enabled, setEnabled] = useState(true);
+
+  useEffect(() => {
+    if (!s) return;
+    setWindowSec(s.spike_window_sec);
+    setMinMps(Number(s.spike_min_mps));
+    setCooldown(s.auto_grab_cooldown_sec);
+    setEnabled(s.auto_grab_enabled);
+  }, [s]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateSpike({
+        data: {
+          spike_window_sec: windowSec,
+          spike_min_mps: minMps,
+          auto_grab_cooldown_sec: cooldown,
+          auto_grab_enabled: enabled,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("AUTO-GRAB SETTINGS SAVED");
+      refetch();
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Save failed"),
+  });
+
+  const testMut = useMutation({
+    mutationFn: () => test({ data: {} }),
+    onSuccess: (res: any) => {
+      if (res?.ok) toast.success(`TEST CLIP QUEUED · ${res.clipId?.slice(0, 8)}`);
+      else toast.error(res?.error ?? "Test failed");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Test failed"),
+  });
+
+  if (!s) return null;
+
+  return (
+    <div className="bg-panel border border-blood/40 p-5 scanlines mt-6">
+      <h3 className="font-display text-xl tracking-widest text-foreground mb-3">
+        AUTO-GRAB ON CHAT SPIKE
+      </h3>
+      <p className="text-xs font-mono text-muted-foreground mb-4">
+        Automatically clip a stream when its chat msgs/sec exceeds the per-source
+        sensitivity (default 2.0×) within the look-back window AND clears the floor.
+        Cooldown prevents back-to-back clips on the same source.
+      </p>
+
+      <div className="flex items-center justify-between mb-4">
+        <div className="font-display text-base tracking-wider">
+          {enabled ? "● ARMED" : "○ DISABLED"}
+        </div>
+        <button
+          type="button"
+          onClick={() => setEnabled((v) => !v)}
+          className={`px-4 py-2 text-xs font-mono tracking-widest border ${
+            enabled
+              ? "bg-blood text-blood-foreground border-blood"
+              : "bg-background border-border text-muted-foreground"
+          }`}
+        >
+          {enabled ? "DISABLE" : "ARM"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <label className="block">
+          <span className="text-[10px] font-mono tracking-widest text-muted-foreground">
+            WINDOW (s)
+          </span>
+          <input
+            type="number"
+            min={15}
+            max={300}
+            value={windowSec}
+            onChange={(e) => setWindowSec(Number(e.target.value) || 15)}
+            className="mt-1 w-full bg-background border border-blood/60 px-3 py-2 font-mono text-sm focus:border-blood focus:outline-none"
+          />
+          <p className="text-[10px] font-mono text-muted-foreground/80 mt-1">
+            Look back N seconds for spike.
+          </p>
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-mono tracking-widest text-muted-foreground">
+            MIN MSGS/SEC
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={50}
+            step={0.1}
+            value={minMps}
+            onChange={(e) => setMinMps(Number(e.target.value) || 0)}
+            className="mt-1 w-full bg-background border border-blood/60 px-3 py-2 font-mono text-sm focus:border-blood focus:outline-none"
+          />
+          <p className="text-[10px] font-mono text-muted-foreground/80 mt-1">
+            Floor — quiet streams ignored.
+          </p>
+        </label>
+        <label className="block">
+          <span className="text-[10px] font-mono tracking-widest text-muted-foreground">
+            COOLDOWN (s)
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={3600}
+            value={cooldown}
+            onChange={(e) => setCooldown(Number(e.target.value) || 0)}
+            className="mt-1 w-full bg-background border border-blood/60 px-3 py-2 font-mono text-sm focus:border-blood focus:outline-none"
+          />
+          <p className="text-[10px] font-mono text-muted-foreground/80 mt-1">
+            Min seconds between auto-grabs per source.
+          </p>
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+          className="px-6 py-3 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red disabled:opacity-50"
+        >
+          {save.isPending ? "SAVING…" : "SAVE AUTO-GRAB"}
+        </button>
+        <button
+          onClick={() => testMut.mutate()}
+          disabled={testMut.isPending}
+          className="px-6 py-3 text-xs font-mono tracking-widest border border-gold text-gold hover:bg-gold/10 disabled:opacity-50"
+          title="Forces a synthetic spike + clip on the first live source"
+        >
+          {testMut.isPending ? "TESTING…" : "▶ TEST AUTO-GRAB"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -223,23 +223,39 @@ export const listRecentClips = createServerFn({ method: "GET" }).handler(
 export const listLiveChatActivity = createServerFn({ method: "GET" }).handler(
   async () => {
     const nowIso = new Date().toISOString();
-    const { data: sources, error: srcErr } = await supabaseAdmin
-      .from("sources")
-      .select("id,slug,display_name,last_known_live,force_live_until")
-      .eq("is_monitoring", true)
-      .or(`last_known_live.eq.true,force_live_until.gt.${nowIso}`);
+    const [{ data: sources, error: srcErr }, { data: settings }] = await Promise.all([
+      supabaseAdmin
+        .from("sources")
+        .select("id,slug,display_name,last_known_live,force_live_until,spike_sensitivity")
+        .eq("is_monitoring", true)
+        .or(`last_known_live.eq.true,force_live_until.gt.${nowIso}`),
+      supabaseAdmin
+        .from("agent_settings")
+        .select("spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,is_paused")
+        .limit(1)
+        .maybeSingle(),
+    ]);
     if (srcErr) throw new Error(srcErr.message);
 
     const since = new Date(Date.now() - 30 * 60_000).toISOString();
     const ids = (sources ?? []).map((s) => s.id);
-    if (!ids.length) return { sources: [] as any[] };
+    if (!ids.length) return { sources: [] as any[], settings: settings ?? null };
 
-    const { data: vel, error: velErr } = await supabaseAdmin
-      .from("chat_velocity")
-      .select("source_id,created_at,msgs_per_sec,baseline_msgs_per_sec,spike_ratio,is_spike,clip_id,sample_messages")
-      .in("source_id", ids)
-      .gte("created_at", since)
-      .order("created_at", { ascending: true });
+    const [{ data: vel, error: velErr }, { data: lastGrabs }] = await Promise.all([
+      supabaseAdmin
+        .from("chat_velocity")
+        .select("source_id,created_at,msgs_per_sec,baseline_msgs_per_sec,spike_ratio,is_spike,clip_id,sample_messages")
+        .in("source_id", ids)
+        .gte("created_at", since)
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("clips")
+        .select("id,source_id,created_at,hook_caption,status,chat_spike_ratio")
+        .in("source_id", ids)
+        .eq("auto_grabbed", true)
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
     if (velErr) throw new Error(velErr.message);
 
     const byId = new Map<string, any[]>();
@@ -248,15 +264,115 @@ export const listLiveChatActivity = createServerFn({ method: "GET" }).handler(
       arr.push(r);
       byId.set(r.source_id, arr);
     }
+    const lastGrabById = new Map<string, any>();
+    for (const g of lastGrabs ?? []) {
+      if (g.source_id && !lastGrabById.has(g.source_id)) lastGrabById.set(g.source_id, g);
+    }
     return {
       sources: (sources ?? []).map((s) => {
         const series = byId.get(s.id) ?? [];
         const latest = series[series.length - 1] ?? null;
-        return { ...s, latest, series };
+        return { ...s, latest, series, lastAutoGrab: lastGrabById.get(s.id) ?? null };
       }),
+      settings: settings ?? null,
     };
   },
 );
+
+export const getSpikeSettings = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const { data, error } = await supabaseAdmin
+      .from("agent_settings")
+      .select("id,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,is_paused")
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return { settings: data };
+  },
+);
+
+export const updateSpikeSettings = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        spike_window_sec: z.number().int().min(15).max(300).optional(),
+        spike_min_mps: z.number().min(0).max(50).optional(),
+        auto_grab_cooldown_sec: z.number().int().min(0).max(3600).optional(),
+        auto_grab_enabled: z.boolean().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { data: row } = await supabaseAdmin
+      .from("agent_settings")
+      .select("id")
+      .limit(1)
+      .maybeSingle();
+    if (!row) throw new Error("no agent_settings row");
+    const { error } = await supabaseAdmin
+      .from("agent_settings")
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const testAutoGrab = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ sourceId: z.string().uuid().optional() }).parse(d ?? {}),
+  )
+  .handler(async ({ data }) => {
+    let sourceId = data.sourceId;
+    if (!sourceId) {
+      const { data: live } = await supabaseAdmin
+        .from("sources")
+        .select("id")
+        .eq("is_monitoring", true)
+        .eq("last_known_live", true)
+        .limit(1)
+        .maybeSingle();
+      if (!live) throw new Error("no live source available");
+      sourceId = live.id;
+    }
+    const { data: src } = await supabaseAdmin
+      .from("sources")
+      .select("id,slug,display_name")
+      .eq("id", sourceId)
+      .single();
+    if (!src) throw new Error("source not found");
+
+    const { data: vel } = await supabaseAdmin
+      .from("chat_velocity")
+      .insert({
+        source_id: src.id,
+        msgs_per_sec: 2.0,
+        baseline_msgs_per_sec: 0.5,
+        spike_ratio: 4.0,
+        is_spike: true,
+        sample_messages: [{ user: "test", text: "SYNTHETIC SPIKE TEST" }],
+        peak_window: "test",
+      })
+      .select("id")
+      .single();
+
+    const result = await createSpikeClip({
+      sourceId: src.id,
+      slug: src.slug,
+      matchedVelocityId: vel?.id ?? null,
+      spikeRatio: 4.0,
+      msgsPerSec: 2.0,
+      sampleMessages: [{ user: "test", text: "SYNTHETIC SPIKE TEST" }],
+      autoGrabbed: true,
+      hookCaption: `${(src.display_name ?? src.slug).toUpperCase()} TEST AUTO-GRAB`,
+    });
+    await supabaseAdmin.from("audit_log").insert({
+      action: "spike_grab_test",
+      clip_id: result.ok ? result.clipId : null,
+      details: { source_id: src.id, slug: src.slug, result },
+    });
+    return result;
+  });
+
 
 export const manualGrabClip = createServerFn({ method: "POST" })
   .inputValidator((d) =>

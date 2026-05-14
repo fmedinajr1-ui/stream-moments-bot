@@ -1,10 +1,12 @@
-// Kick chat via Pusher WebSocket (public, no auth).
-// Uses Cloudflare Workers' fetch-upgrade pattern.
+// Kick chat sampling via REST polling.
+//
+// Cloudflare Workers' outbound WebSocket-to-Pusher upgrade has been silently
+// dropping frames in production (zero msgs/sec across all sources), so we
+// poll the REST endpoint instead: snapshot recent messages, sleep for the
+// window, snapshot again, and count message ids that appeared in window 2
+// but not window 1.
 
 import type { KickChatMessage } from "@/lib/kick.server";
-
-const PUSHER_FETCH_URL =
-  "https://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0&flash=false";
 
 export type ChatSample = {
   messages: KickChatMessage[];
@@ -13,152 +15,93 @@ export type ChatSample = {
   error?: string;
 };
 
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+const HEADERS = {
+  "User-Agent": UA,
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: "https://kick.com/",
+  Origin: "https://kick.com",
+};
+
+async function fetchRecentMessages(
+  chatroomId: number | string,
+): Promise<KickChatMessage[] | null> {
+  const url = `https://kick.com/api/v2/channels/${encodeURIComponent(String(chatroomId))}/messages`;
+  try {
+    const res = await fetch(url, { headers: HEADERS });
+    if (!res.ok) {
+      const preview = await res.text().catch(() => "");
+      console.warn(
+        `[kick-chat] non-OK ${res.status} chatroom=${chatroomId} :: ${preview.slice(0, 120)}`,
+      );
+      return null;
+    }
+    const json: any = await res.json();
+    const list: any[] = json?.data?.messages ?? json?.messages ?? json?.data ?? [];
+    return list
+      .map((m): KickChatMessage | null => {
+        const id = String(m?.id ?? m?.uuid ?? "");
+        const content = String(m?.content ?? "");
+        if (!id || !content) return null;
+        const username =
+          m?.sender?.username ??
+          m?.user?.username ??
+          m?.username ??
+          "anon";
+        const createdAt =
+          m?.created_at ?? m?.createdAt ?? new Date().toISOString();
+        return { id, content, username, createdAt };
+      })
+      .filter((x): x is KickChatMessage => x !== null);
+  } catch (err: any) {
+    console.error(`[kick-chat] fetch threw chatroom=${chatroomId}`, err);
+    return null;
+  }
+}
+
 export async function sampleKickChat(
   chatroomId: number | string,
   durationMs = 10_000,
 ): Promise<ChatSample> {
   const start = Date.now();
-  const messages: KickChatMessage[] = [];
-  let connected = false;
-  let firstMsgLogged = false;
 
-  let ws: WebSocket;
-  try {
-    const resp = await fetch(PUSHER_FETCH_URL, {
-      headers: {
-        Upgrade: "websocket",
-        Origin: "https://kick.com",
-      },
-    });
-    const sock = (resp as unknown as { webSocket: WebSocket | null }).webSocket;
-    console.log(
-      `[kick-ws] upgrade chatroom=${chatroomId} status=${resp.status} hasSocket=${!!sock}`,
-    );
-    if (resp.status !== 101 || !sock) {
-      const bodyPreview = await resp.text().catch(() => "");
-      return {
-        messages,
-        durationMs: Date.now() - start,
-        connected: false,
-        error: `upgrade failed status=${resp.status} :: ${bodyPreview.slice(0, 200)}`,
-      };
-    }
-    ws = sock;
-    (ws as unknown as { accept: () => void }).accept();
-  } catch (err: any) {
+  const before = await fetchRecentMessages(chatroomId);
+  if (!before) {
     return {
-      messages,
+      messages: [],
       durationMs: Date.now() - start,
       connected: false,
-      error: `ws upgrade fetch failed: ${err?.message ?? String(err)}`,
+      error: "rest snapshot 1 failed",
+    };
+  }
+  const seenIds = new Set(before.map((m) => m.id));
+  console.log(
+    `[kick-chat] chatroom=${chatroomId} snap1=${before.length} sleeping=${durationMs}ms`,
+  );
+
+  await new Promise((r) => setTimeout(r, durationMs));
+
+  const after = await fetchRecentMessages(chatroomId);
+  if (!after) {
+    return {
+      messages: [],
+      durationMs: Date.now() - start,
+      connected: false,
+      error: "rest snapshot 2 failed",
     };
   }
 
-  return await new Promise<ChatSample>((resolve) => {
-    let settled = false;
-    const finish = (error?: string) => {
-      if (settled) return;
-      settled = true;
-      try {
-        ws.close();
-      } catch {}
-      resolve({
-        messages,
-        durationMs: Date.now() - start,
-        connected,
-        error,
-      });
-    };
+  const newOnes = after.filter((m) => !seenIds.has(m.id));
+  console.log(
+    `[kick-chat] chatroom=${chatroomId} snap2=${after.length} new=${newOnes.length}`,
+  );
 
-    (ws as any).onmessage = (ev: MessageEvent) => {
-      let frame: any;
-      const raw = typeof ev.data === "string" ? ev.data : "";
-      try {
-        frame = JSON.parse(raw);
-      } catch {
-        return;
-      }
-      const event: string = frame?.event ?? "";
-
-      if (event === "pusher:connection_established") {
-        connected = true;
-        console.log(`[kick-ws] connected chatroom=${chatroomId}`);
-        try {
-          ws.send(
-            JSON.stringify({
-              event: "pusher:subscribe",
-              data: { auth: "", channel: `chatrooms.${chatroomId}.v2` },
-            }),
-          );
-        } catch (err: any) {
-          finish(`subscribe send failed: ${err?.message ?? String(err)}`);
-        }
-        return;
-      }
-
-      if (event === "pusher_internal:subscription_succeeded") {
-        console.log(`[kick-ws] subscribed chatroom=${chatroomId}`);
-        return;
-      }
-
-      if (event === "pusher:ping") {
-        try {
-          ws.send(JSON.stringify({ event: "pusher:pong", data: {} }));
-        } catch {}
-        return;
-      }
-
-      if (event === "pusher:error") {
-        finish(`pusher error: ${JSON.stringify(frame?.data ?? {})}`);
-        return;
-      }
-
-      if (
-        event === "App\\Events\\ChatMessageEvent" ||
-        event.endsWith("ChatMessageEvent")
-      ) {
-        let payload: any = frame.data;
-        if (typeof payload === "string") {
-          try {
-            payload = JSON.parse(payload);
-          } catch {
-            return;
-          }
-        }
-        const id = String(payload?.id ?? payload?.uuid ?? "");
-        const content = String(payload?.content ?? "");
-        const username =
-          payload?.sender?.username ??
-          payload?.user?.username ??
-          payload?.username ??
-          "anon";
-        const createdAt =
-          payload?.created_at ?? payload?.createdAt ?? new Date().toISOString();
-        if (id && content) {
-          messages.push({ id, content, username, createdAt });
-          if (!firstMsgLogged) {
-            firstMsgLogged = true;
-            console.log(`[kick-ws] first msg chatroom=${chatroomId}`);
-          }
-        }
-      }
-    };
-
-    (ws as any).onclose = (ev: CloseEvent) => {
-      console.log(
-        `[kick-ws] close chatroom=${chatroomId} code=${ev?.code} reason=${ev?.reason}`,
-      );
-      finish();
-    };
-
-    (ws as any).onerror = (ev: Event) => {
-      const detail = (ev as any)?.message ?? (ev as any)?.error ?? "";
-      console.log(
-        `[kick-ws] error chatroom=${chatroomId} detail=${String(detail).slice(0, 200)}`,
-      );
-      finish(`ws error: ${String(detail).slice(0, 200)}`);
-    };
-
-    setTimeout(() => finish(), durationMs);
-  });
+  return {
+    messages: newOnes,
+    durationMs: Date.now() - start,
+    connected: true,
+  };
 }

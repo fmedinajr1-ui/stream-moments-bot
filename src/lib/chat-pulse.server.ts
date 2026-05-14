@@ -5,19 +5,22 @@ import { createSpikeClip } from "@/lib/spike-clip.server";
 export type ChatPulseSummary = {
   polled: number;
   spikes: number;
+  triggered: number;
+  skippedCooldown: number;
   sources: Array<{
     slug: string;
     msgs_per_sec: number;
     baseline: number;
     spike_ratio: number;
     spike: boolean;
+    triggered?: boolean;
+    skipped_reason?: string;
     sampled_ms?: number;
     msg_count?: number;
     error?: string;
   }>;
 };
 
-const SAMPLE_MS = 10_000;
 const BASELINE_MIN = 10;
 
 async function resolveChatroomId(slug: string): Promise<number | null> {
@@ -43,6 +46,21 @@ async function resolveChatroomId(slug: string): Promise<number | null> {
 
 export async function runChatPulse(): Promise<ChatPulseSummary> {
   const nowIso = new Date().toISOString();
+
+  const { data: settings } = await supabaseAdmin
+    .from("agent_settings")
+    .select(
+      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled",
+    )
+    .limit(1)
+    .maybeSingle();
+
+  const windowSec = Math.max(15, Number(settings?.spike_window_sec ?? 60));
+  const sampleMs = Math.min(20_000, windowSec * 1000); // cap WS sleep to avoid Worker timeout
+  const minMps = Number(settings?.spike_min_mps ?? 0.5);
+  const cooldownSec = Math.max(0, Number(settings?.auto_grab_cooldown_sec ?? 180));
+  const autoEnabled = settings?.auto_grab_enabled !== false && !settings?.is_paused;
+
   const { data: sources, error } = await supabaseAdmin
     .from("sources")
     .select("id, slug, spike_sensitivity, last_known_live, force_live_until")
@@ -50,9 +68,14 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
     .or(`last_known_live.eq.true,force_live_until.gt.${nowIso}`);
   if (error) throw error;
 
-  const summary: ChatPulseSummary = { polled: 0, spikes: 0, sources: [] };
+  const summary: ChatPulseSummary = {
+    polled: 0,
+    spikes: 0,
+    triggered: 0,
+    skippedCooldown: 0,
+    sources: [],
+  };
 
-  // Sample all live sources in parallel — each opens its own WS for SAMPLE_MS.
   const results = await Promise.allSettled(
     (sources ?? []).map(async (src) => {
       const log: ChatPulseSummary["sources"][number] = {
@@ -69,7 +92,7 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
         return { src, log };
       }
 
-      const sample = await sampleKickChat(chatroomId, SAMPLE_MS);
+      const sample = await sampleKickChat(chatroomId, sampleMs);
       const seconds = Math.max(sample.durationMs / 1000, 1);
       const mps = sample.messages.length / seconds;
 
@@ -88,7 +111,7 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
       const ratio = baseline > 0 ? mps / baseline : 0;
 
       const sensitivity = Number(src.spike_sensitivity ?? 2.0);
-      const isSpike = ratio >= sensitivity && mps >= 0.5;
+      const isSpike = ratio >= sensitivity && mps >= minMps;
 
       log.msgs_per_sec = +mps.toFixed(2);
       log.baseline = +baseline.toFixed(2);
@@ -117,26 +140,81 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
         .select("id")
         .single();
 
-      if (isSpike && velRow) {
-        try {
-          const clipRes = await createSpikeClip({
-            sourceId: src.id,
-            slug: src.slug,
-            matchedVelocityId: velRow.id,
-            spikeRatio: ratio,
-            msgsPerSec: mps,
-            sampleMessages,
+      let triggered = false;
+      let skipReason: string | undefined;
+
+      if (isSpike && velRow && autoEnabled) {
+        // Per-source cooldown — skip if we already auto-grabbed within window.
+        const cooldownSince = new Date(Date.now() - cooldownSec * 1000).toISOString();
+        const { data: recent } = await supabaseAdmin
+          .from("clips")
+          .select("id,created_at")
+          .eq("source_id", src.id)
+          .eq("auto_grabbed", true)
+          .gte("created_at", cooldownSince)
+          .limit(1);
+
+        if (recent && recent.length > 0) {
+          skipReason = `cooldown (${cooldownSec}s)`;
+          await supabaseAdmin.from("audit_log").insert({
+            action: "spike_grab_skipped",
+            details: {
+              source_id: src.id,
+              slug: src.slug,
+              spike_ratio: ratio,
+              msgs_per_sec: mps,
+              reason: skipReason,
+              last_clip_id: recent[0].id,
+              last_clip_at: recent[0].created_at,
+            },
           });
-          console.log(
-            `[chat-pulse] spike clip for ${src.slug}:`,
-            JSON.stringify(clipRes),
-          );
-        } catch (err) {
-          console.error(`[chat-pulse] spike clip failed for ${src.slug}`, err);
+        } else {
+          try {
+            const clipRes = await createSpikeClip({
+              sourceId: src.id,
+              slug: src.slug,
+              matchedVelocityId: velRow.id,
+              spikeRatio: ratio,
+              msgsPerSec: mps,
+              sampleMessages,
+              autoGrabbed: true,
+            });
+            triggered = !!clipRes.ok;
+            await supabaseAdmin.from("audit_log").insert({
+              action: triggered ? "spike_grab_triggered" : "spike_grab_failed",
+              clip_id: triggered ? clipRes.clipId : null,
+              details: {
+                source_id: src.id,
+                slug: src.slug,
+                spike_ratio: ratio,
+                msgs_per_sec: mps,
+                error: triggered ? null : clipRes.error,
+              },
+            });
+            console.log(
+              `[chat-pulse] auto-grab ${src.slug}:`,
+              JSON.stringify(clipRes),
+            );
+          } catch (err: any) {
+            await supabaseAdmin.from("audit_log").insert({
+              action: "spike_grab_failed",
+              details: {
+                source_id: src.id,
+                slug: src.slug,
+                spike_ratio: ratio,
+                msgs_per_sec: mps,
+                error: err?.message ?? String(err),
+              },
+            });
+            console.error(`[chat-pulse] auto-grab threw ${src.slug}`, err);
+          }
         }
       }
 
-      return { src, log, isSpike };
+      log.triggered = triggered;
+      log.skipped_reason = skipReason;
+
+      return { src, log, isSpike, triggered, skipReason };
     }),
   );
 
@@ -145,6 +223,8 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
     if (r.status === "fulfilled") {
       summary.sources.push(r.value.log);
       if (r.value.isSpike) summary.spikes++;
+      if (r.value.triggered) summary.triggered++;
+      if (r.value.skipReason) summary.skippedCooldown++;
     } else {
       summary.sources.push({
         slug: "?",
@@ -156,6 +236,12 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
       });
     }
   }
+
+  // Single audit row capturing the whole tick (handy in the timeline).
+  await supabaseAdmin.from("audit_log").insert({
+    action: "chat_pulse_tick",
+    details: summary as any,
+  });
 
   return summary;
 }
