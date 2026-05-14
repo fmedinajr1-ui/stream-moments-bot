@@ -49,6 +49,9 @@ function SourcesPage() {
   const poll = useServerFn(runPollNow);
   const fetchVel = useServerFn(getLatestChatVelocity);
   const setSens = useServerFn(updateSourceSensitivity);
+  const forceWatch = useServerFn(forceWatchSource);
+  const stopForce = useServerFn(stopForceWatchSource);
+  const [forceMins, setForceMins] = useState(30);
 
   const { data: vel } = useQuery({
     queryKey: ["chat-velocity"],
