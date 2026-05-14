@@ -62,6 +62,16 @@ function LibraryPage() {
     onError: (err: any) => toast.error(err?.message ?? "Retry failed"),
   });
 
+  const regrabMut = useMutation({
+    mutationFn: (clipId: string) => regrabFn({ data: { clipId } }),
+    onSuccess: (res: any) => {
+      if (res?.ok) toast.success("Re-grab queued — capturing fresh slice");
+      else toast.error(res?.error ?? "Re-grab failed");
+      refetch();
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Re-grab failed"),
+  });
+
   function downloadMp4(c: Clip) {
     const job = latestJob(c);
     const url = c.rendered_video_url ?? job?.output_url ?? c.video_url;
