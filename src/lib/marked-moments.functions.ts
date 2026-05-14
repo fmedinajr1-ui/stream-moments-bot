@@ -36,12 +36,30 @@ export const listMarkedMoments = createServerFn({ method: "GET" }).handler(
     const { data, error } = await supabaseAdmin
       .from("marked_moments")
       .select(
-        "id, source_id, marked_at, duration_sec, caption, status, attempts, last_error, resolved_clip_id, resolved_at, sources(slug, display_name)",
+        "id, source_id, marked_at, duration_sec, caption, status, attempts, last_error, resolved_clip_id, resolved_at",
       )
       .order("marked_at", { ascending: false })
       .limit(40);
     if (error) throw new Error(error.message);
-    return { moments: data ?? [] };
+
+    const sourceIds = Array.from(
+      new Set((data ?? []).map((m) => m.source_id).filter(Boolean)),
+    );
+    let sourcesById: Record<string, { slug: string; display_name: string }> = {};
+    if (sourceIds.length) {
+      const { data: srcs } = await supabaseAdmin
+        .from("sources")
+        .select("id, slug, display_name")
+        .in("id", sourceIds);
+      sourcesById = Object.fromEntries(
+        (srcs ?? []).map((s) => [s.id, { slug: s.slug, display_name: s.display_name }]),
+      );
+    }
+    const moments = (data ?? []).map((m) => ({
+      ...m,
+      sources: sourcesById[m.source_id] ?? null,
+    }));
+    return { moments };
   },
 );
 
