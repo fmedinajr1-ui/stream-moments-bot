@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listApprovedClips, recordDownload } from "@/lib/clips.functions";
-import { retryRender } from "@/lib/render.functions";
+import { retryRender, regrabClip } from "@/lib/render.functions";
 
 export const Route = createFileRoute("/_app/library")({
   component: LibraryPage,
@@ -44,6 +44,7 @@ function LibraryPage() {
   const fetchClips = useServerFn(listApprovedClips);
   const record = useServerFn(recordDownload);
   const retryFn = useServerFn(retryRender);
+  const regrabFn = useServerFn(regrabClip);
   const { data, refetch } = useQuery({
     queryKey: ["approved-clips"],
     queryFn: () => fetchClips(),
@@ -59,6 +60,16 @@ function LibraryPage() {
       refetch();
     },
     onError: (err: any) => toast.error(err?.message ?? "Retry failed"),
+  });
+
+  const regrabMut = useMutation({
+    mutationFn: (clipId: string) => regrabFn({ data: { clipId } }),
+    onSuccess: (res: any) => {
+      if (res?.ok) toast.success("Re-grab queued — capturing fresh slice");
+      else toast.error(res?.error ?? "Re-grab failed");
+      refetch();
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Re-grab failed"),
   });
 
   function downloadMp4(c: Clip) {
@@ -248,6 +259,14 @@ function LibraryPage() {
                       CAPCUT
                     </button>
                   </div>
+                  <button
+                    onClick={() => regrabMut.mutate(c.id)}
+                    disabled={regrabMut.isPending}
+                    className="mt-2 text-[10px] font-mono tracking-widest text-muted-foreground hover:text-blood underline underline-offset-2 disabled:opacity-50 self-start"
+                    title="Discard the current render and capture a fresh slice from the live edge"
+                  >
+                    ↻ RE-GRAB FROM LIVE
+                  </button>
                 </div>
               </article>
             );

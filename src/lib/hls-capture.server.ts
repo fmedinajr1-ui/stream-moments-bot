@@ -126,17 +126,41 @@ export async function captureHlsToStorage(opts: {
   const { segments } = parseMedia(mediaText, mediaUrl);
   if (!segments.length) return { ok: false, error: "no segments" };
 
+  // Total covered seconds for sanity-checking the offset
+  const totalCovered = segments.reduce((a, s) => a + s.duration, 0);
+
   // Pick the slice
   let startIdx = 0;
   if (opts.startOffsetSec && opts.startOffsetSec > 0) {
+    // Reject offsets past the playlist — we'd otherwise silently fall back
+    // to startIdx=0 and capture the start of the VOD every time.
+    if (opts.startOffsetSec > totalCovered) {
+      return {
+        ok: false,
+        error: `offset beyond playlist length (requested ${Math.round(opts.startOffsetSec)}s, available ${Math.round(totalCovered)}s)`,
+      };
+    }
     let acc = 0;
+    let found = false;
     for (let i = 0; i < segments.length; i++) {
       if (acc + segments[i].duration >= opts.startOffsetSec) {
         startIdx = i;
+        found = true;
         break;
       }
       acc += segments[i].duration;
     }
+    if (!found) {
+      return {
+        ok: false,
+        error: `could not locate offset ${Math.round(opts.startOffsetSec)}s in playlist`,
+      };
+    }
+    // Clamp so we still get a full slice if offset lands near the tail
+    const segDur = segments[startIdx].duration || 2;
+    const segsNeeded = Math.ceil(opts.durationSec / segDur);
+    const maxStart = Math.max(0, segments.length - segsNeeded);
+    if (startIdx > maxStart) startIdx = maxStart;
   } else {
     // Live edge: walk back from the end until we cover durationSec
     let acc = 0;
