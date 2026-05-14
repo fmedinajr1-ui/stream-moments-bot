@@ -16,27 +16,39 @@ export type Database = {
     Tables: {
       agent_settings: {
         Row: {
+          auto_grab_cooldown_sec: number
+          auto_grab_enabled: boolean
           blocked_keywords: string[]
           id: string
           is_paused: boolean
           max_clips_per_day: number
           min_score_threshold: number
+          spike_min_mps: number
+          spike_window_sec: number
           updated_at: string
         }
         Insert: {
+          auto_grab_cooldown_sec?: number
+          auto_grab_enabled?: boolean
           blocked_keywords?: string[]
           id?: string
           is_paused?: boolean
           max_clips_per_day?: number
           min_score_threshold?: number
+          spike_min_mps?: number
+          spike_window_sec?: number
           updated_at?: string
         }
         Update: {
+          auto_grab_cooldown_sec?: number
+          auto_grab_enabled?: boolean
           blocked_keywords?: string[]
           id?: string
           is_paused?: boolean
           max_clips_per_day?: number
           min_score_threshold?: number
+          spike_min_mps?: number
+          spike_window_sec?: number
           updated_at?: string
         }
         Relationships: []
@@ -146,6 +158,7 @@ export type Database = {
       clips: {
         Row: {
           approved_at: string | null
+          auto_grabbed: boolean
           chat_spike_ratio: number | null
           created_at: string
           duration_seconds: number | null
@@ -169,6 +182,7 @@ export type Database = {
         }
         Insert: {
           approved_at?: string | null
+          auto_grabbed?: boolean
           chat_spike_ratio?: number | null
           created_at?: string
           duration_seconds?: number | null
@@ -192,6 +206,7 @@ export type Database = {
         }
         Update: {
           approved_at?: string | null
+          auto_grabbed?: boolean
           chat_spike_ratio?: number | null
           created_at?: string
           duration_seconds?: number | null
