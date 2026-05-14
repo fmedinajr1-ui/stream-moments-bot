@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { submitRender } from "@/lib/shotstack.server";
 import { resolveVodAt } from "@/lib/kick-vod.server";
+import {
+  captureHlsToStorage,
+  getKickLivePlaybackUrl,
+} from "@/lib/hls-capture.server";
 
 const APP_BASE =
   process.env.APP_BASE_URL ??
@@ -28,28 +32,50 @@ export async function startRenderForClip(clipId: string) {
   }
 
   const slug = (clip as any).sources?.slug;
-  if (!slug || !targetIso) {
+  if (!slug) {
     await supabaseAdmin.from("render_jobs").insert({
       clip_id: clipId,
       status: "failed",
-      error_message: "Missing source slug or timestamp for VOD lookup",
+      error_message: "Missing source slug",
     });
-    return { ok: false, error: "Missing slug/timestamp" };
+    return { ok: false, error: "Missing slug" };
   }
 
-  const vod = await resolveVodAt(slug, targetIso);
-  if (!vod) {
+  // 1) Try VOD lookup. 2) If no VOD yet, fall back to live playback URL
+  //    (captures the live edge — useful for active streams).
+  let playlistUrl: string | null = null;
+  let startOffsetSec: number | null = null;
+  let mode: "vod" | "live" = "vod";
+
+  if (targetIso) {
+    const vod = await resolveVodAt(slug, targetIso);
+    if (vod) {
+      playlistUrl = vod.vodUrl;
+      // Pull a 5s lead-in so the moment isn't right at the cut
+      startOffsetSec = Math.max(0, vod.startOffsetSec - 5);
+    }
+  }
+
+  if (!playlistUrl) {
+    const live = await getKickLivePlaybackUrl(slug);
+    if (live) {
+      playlistUrl = live;
+      mode = "live";
+      startOffsetSec = null; // live edge
+    }
+  }
+
+  if (!playlistUrl) {
     await supabaseAdmin.from("render_jobs").insert({
       clip_id: clipId,
       status: "failed",
       error_message:
-        "VOD not yet available — try again in ~10 min after stream ends",
+        "No VOD or live playback URL available — channel may be offline",
     });
-    return { ok: false, error: "VOD not available" };
+    return { ok: false, error: "No playback URL" };
   }
 
-  const duration = 45;
-  const start = Math.max(0, vod.startOffsetSec - 25);
+  const duration = Math.min(45, Math.max(15, clip.duration_seconds ?? 30));
 
   const { data: job, error: jobErr } = await supabaseAdmin
     .from("render_jobs")
@@ -57,19 +83,43 @@ export async function startRenderForClip(clipId: string) {
       clip_id: clipId,
       status: "pending",
       provider: "shotstack",
-      vod_url: vod.vodUrl,
-      start_offset_sec: start,
+      vod_url: playlistUrl,
+      start_offset_sec: startOffsetSec ?? 0,
       duration_sec: duration,
     })
     .select()
     .single();
   if (jobErr || !job) throw new Error(jobErr?.message ?? "job insert failed");
 
+  // Capture the HLS slice to our own Storage so Shotstack can fetch it
+  // (Kick blocks Shotstack's render workers directly).
+  const cap = await captureHlsToStorage({
+    playlistUrl,
+    durationSec: duration,
+    startOffsetSec,
+    storagePath: `raw/${clipId}.ts`,
+  });
+  if (!cap.ok || !cap.signedUrl) {
+    await supabaseAdmin
+      .from("render_jobs")
+      .update({
+        status: "failed",
+        error_message: `HLS capture (${mode}) failed: ${cap.error ?? "unknown"}`,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
+    return { ok: false, error: cap.error };
+  }
+
+  console.log(
+    `[render-runner] captured ${cap.segments} segs (${cap.bytes} bytes) for clip ${clipId} via ${mode}`,
+  );
+
   const callback = `${APP_BASE}/api/public/hooks/shotstack?job=${job.id}&secret=${encodeURIComponent(process.env.SHOTSTACK_WEBHOOK_SECRET ?? "")}`;
 
   const sub = await submitRender({
-    sourceUrl: vod.vodUrl,
-    trimStart: start,
+    sourceUrl: cap.signedUrl,
+    trimStart: 0, // already trimmed during capture
     duration,
     caption: clip.hook_caption ?? clip.title ?? "",
     callbackUrl: callback,
@@ -92,5 +142,5 @@ export async function startRenderForClip(clipId: string) {
     .update({ status: "rendering", provider_render_id: sub.renderId })
     .eq("id", job.id);
 
-  return { ok: true, jobId: job.id, renderId: sub.renderId };
+  return { ok: true, jobId: job.id, renderId: sub.renderId, mode };
 }
