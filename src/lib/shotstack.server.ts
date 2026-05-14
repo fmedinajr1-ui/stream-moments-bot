@@ -19,24 +19,24 @@ export async function submitRender(req: RenderRequest): Promise<{
   const apiKey = process.env.SHOTSTACK_API_KEY;
   if (!apiKey) return { ok: false, error: "Missing SHOTSTACK_API_KEY" };
 
-  const safeCaption = (req.caption ?? "").slice(0, 80) || " ";
+  const safeCaption = (req.caption ?? "").slice(0, 42) || " ";
 
   const body = {
     timeline: {
       background: "#000000",
       tracks: [
-        // Caption overlay on top, first 3s
+        // Caption overlay on top, first 3s — sized for 9:16 safe zone
         {
           clips: [
             {
               asset: {
                 type: "title",
                 text: safeCaption,
-                style: "future",
+                style: "minimal",
                 color: "#ffffff",
-                size: "large",
-                background: "#000000",
+                size: "small",
                 position: "bottom",
+                offset: { y: 0.08 },
               },
               start: 0,
               length: Math.min(3, req.duration),

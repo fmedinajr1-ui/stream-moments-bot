@@ -1,63 +1,48 @@
-# Why nothing is clipping for Deen
+# Fix: live clips pulling stale archive + oversized captions
 
-Two independent bugs are stacking:
+## What's actually happening
 
-**1. The chat WebSocket never receives messages on Cloudflare Workers.**
-`src/lib/kick-ws.server.ts` uses `new WebSocket(url)`. Cloudflare Workers do **not** support outbound WebSocket connections via the standard constructor — outbound WS must use the `fetch()` + `Upgrade: websocket` pattern and read `response.webSocket`. The current code "connects" (constructor doesn't throw on the dev runtime) but no frames arrive in production, which is exactly what we see: every `chat_velocity` row is `msgs_per_sec = 0`, `sample_messages = []`.
+Both questions trace to the same render path.
 
-**2. `getRecentClips` only returns viewer-created clips.**
-Even when chat is spiking, Kick's `/api/v2/channels/{slug}/clips` only lists clips that someone manually created. During a live moment, that list is usually empty, so even with a working spike signal we have nothing to score.
+### 1. "Are these old clips?"
+Yes — kind of. Every recent render hit this VOD URL:
 
-# The fix (two parts)
-
-## Part A — Rewrite the WS sampler to use Workers' fetch-upgrade
-
-`src/lib/kick-ws.server.ts`:
-- Replace `new WebSocket(PUSHER_URL)` with:
-  ```ts
-  const resp = await fetch(PUSHER_URL, { headers: { Upgrade: "websocket" } });
-  const ws = resp.webSocket;
-  if (!ws) return finish("no webSocket on response");
-  ws.accept();
-  ```
-- Keep all existing handlers (`message`, `close`, `error`), the `pusher:subscribe` send on `connection_established`, the `ChatMessageEvent` parser, and the 10s timer — only the construction changes.
-- Add one log line on first parsed message (`[kick-ws] first msg for {chatroomId}`) so we can confirm the fix in worker logs without re-querying the DB.
-
-## Part B — Auto-create clips from live VOD on chat spikes
-
-We already have `src/lib/kick-vod.server.ts` and `src/lib/render-runner.server.ts` (Shotstack). Wire them into the spike path:
-
-`src/lib/chat-pulse.server.ts`:
-- When `isSpike === true`, after inserting the `chat_velocity` row, call a new helper `triggerSpikeClip(src, velocityRow)` that:
-  1. Resolves the streamer's current live VOD URL via `kick-vod.server.ts`.
-  2. Computes `start_offset_sec` = (stream uptime − ~20s lead-in) and `duration_sec` = 30s.
-  3. Inserts a `clips` row with `status='processing'`, `matched_velocity_id`, `chat_spike_ratio`, AI-scored `hook_caption` / `virality_score` (reuse `scoreClip` from `poll-kick.server.ts`, refactored into a shared `src/lib/score.server.ts`).
-  4. Inserts a `render_jobs` row and kicks Shotstack via `render-runner.server.ts`.
-- Keep the existing `pollSources` viewer-clip path intact — they're complementary (one catches viewer clips, one catches our own spike clips).
-
-## Part C — Manual safety net
-
-While Part B is being verified, surface a "CLIP NOW" button on the source card (`src/routes/_app.sources.tsx`) that calls a new `clipNowFromLive({ sourceId, durationSec=30 })` server fn — same VOD-cut logic as Part B but triggered by hand. This means even if spike detection underperforms, you can grab a moment from Deen's stream immediately.
-
-## Out of scope
-- Re-scoring or back-editing existing clips.
-- Changing the cron cadence.
-- Touching the `pollSources` clips-API path.
-
-# Files touched
-```text
-src/lib/kick-ws.server.ts        (rewrite WS construction)
-src/lib/score.server.ts          (new — extract scoreClip)
-src/lib/poll-kick.server.ts      (import scoreClip from new module)
-src/lib/chat-pulse.server.ts     (call triggerSpikeClip on is_spike)
-src/lib/spike-clip.server.ts     (new — VOD cut + Shotstack kickoff)
-src/lib/agent.functions.ts       (new clipNowFromLive server fn)
-src/routes/_app.sources.tsx      (CLIP NOW button)
+```
+.../2026/5/12/23/44/.../master.m3u8   start_offset_sec ≈ 150,000  (~42h in)
 ```
 
-# How we'll verify
-1. After deploy, hit `/api/public/cron/chat-pulse` and confirm `msg_count > 0` for `deenthegreat` in the response.
-2. Watch `chat_velocity` for a row with `is_spike=true`.
-3. Confirm a matching `clips` row + `render_jobs` row appears, then a `rendered_video_url` once Shotstack webhook fires.
+Deen's stream has been live since **May 12 23:44 UTC**. Kick exposes the in-progress session as a "video" with a continuously growing `duration`, so `resolveVodAt()` matches it and computes a 42-hour offset into the archive playlist. That archive is real but lags / can return earlier session segments, so the clip plays footage that doesn't match what's on stream right now.
 
-If A alone restores chat msgs but spikes still don't fire, we lower `spike_sensitivity` for Deen before adding more logic.
+Fix: when the channel is **currently live**, ignore VOD lookup and capture from the **live edge** instead. The live HLS playlist always contains the most recent ~30–60s, which is exactly what a "spike right now" clip should show.
+
+### 2. "Subtitles too large"
+In `shotstack.server.ts` the title asset is:
+```
+style: "future", size: "large", background: "#000000", position: "bottom"
+```
+On a 1080×1920 9:16 frame that "large" + black bar fills almost the full width and crops words ("EGREAT  LIVE C…" in the screenshot). Needs smaller size, no full-bleed bar, safe-zone padding.
+
+## Changes
+
+### `src/lib/render-runner.server.ts`
+- Call `getKickLivePlaybackUrl(slug)` **first**.
+- If live URL exists → use live mode (no VOD lookup, `startOffsetSec = null`, capture trailing window).
+- Only fall back to `resolveVodAt()` when channel is offline (no live URL).
+- Keep the VOD path for past moments / backfill.
+
+### `src/lib/hls-capture.server.ts`
+- In `mode: "live"`, when reading the media playlist, drop all but the last `durationSec` worth of segments (current behavior may grab from playlist head). Ensures we capture the actual live edge, not the start of the rolling window.
+
+### `src/lib/shotstack.server.ts` — caption sizing
+Replace the title asset block with one tuned for 9:16:
+- `size: "small"` (was `large`)
+- Remove `background` (no full-width black bar) — rely on text stroke for legibility
+- `position: "bottom"` kept, but caption length cap drops from 80 → **42 chars** so it fits one line at 1080 wide
+- Optionally swap `style: "future"` → `style: "minimal"` for tighter glyphs
+
+## Out of scope
+- Burning word-by-word subtitles from transcription (separate feature).
+- Re-rendering the two existing "old" clips — once the fix lands, the next spike will render correctly. I can also re-queue the two failed/old ones with `retryRender` after the change if you want.
+
+## Risk
+Low — both files are server-side, behind the existing `render_jobs` retry path. If live capture fails, the runner already records `failed` with an error message and the Library shows a RETRY button.

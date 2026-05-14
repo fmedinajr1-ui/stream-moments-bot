@@ -41,27 +41,27 @@ export async function startRenderForClip(clipId: string) {
     return { ok: false, error: "Missing slug" };
   }
 
-  // 1) Try VOD lookup. 2) If no VOD yet, fall back to live playback URL
-  //    (captures the live edge — useful for active streams).
+  // 1) If channel is live RIGHT NOW, capture from the live edge — Kick's
+  //    archive playlist for an in-progress session can be hours stale and
+  //    `resolveVodAt()` happily returns a 40+ hour offset into it.
+  // 2) Only fall back to VOD lookup when the channel is offline (e.g. for
+  //    backfill or post-stream clipping).
   let playlistUrl: string | null = null;
   let startOffsetSec: number | null = null;
-  let mode: "vod" | "live" = "vod";
+  let mode: "vod" | "live" = "live";
 
-  if (targetIso) {
+  const live = await getKickLivePlaybackUrl(slug);
+  if (live) {
+    playlistUrl = live;
+    mode = "live";
+    startOffsetSec = null; // live edge
+  } else if (targetIso) {
     const vod = await resolveVodAt(slug, targetIso);
     if (vod) {
       playlistUrl = vod.vodUrl;
+      mode = "vod";
       // Pull a 5s lead-in so the moment isn't right at the cut
       startOffsetSec = Math.max(0, vod.startOffsetSec - 5);
-    }
-  }
-
-  if (!playlistUrl) {
-    const live = await getKickLivePlaybackUrl(slug);
-    if (live) {
-      playlistUrl = live;
-      mode = "live";
-      startOffsetSec = null; // live edge
     }
   }
 
