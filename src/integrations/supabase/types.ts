@@ -318,6 +318,60 @@ export type Database = {
         }
         Relationships: []
       }
+      obs_clients: {
+        Row: {
+          created_at: string
+          id: string
+          last_polled_at: string | null
+          last_save_at: string | null
+          source_slug: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_polled_at?: string | null
+          last_save_at?: string | null
+          source_slug: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_polled_at?: string | null
+          last_save_at?: string | null
+          source_slug?: string
+        }
+        Relationships: []
+      }
+      obs_trigger_queue: {
+        Row: {
+          action: string
+          claimed_at: string | null
+          created_at: string
+          id: string
+          payload: Json
+          source_id: string | null
+          source_slug: string
+        }
+        Insert: {
+          action?: string
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
+          source_id?: string | null
+          source_slug: string
+        }
+        Update: {
+          action?: string
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
+          source_id?: string | null
+          source_slug?: string
+        }
+        Relationships: []
+      }
       render_jobs: {
         Row: {
           clip_id: string
