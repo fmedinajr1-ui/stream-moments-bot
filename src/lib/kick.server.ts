@@ -110,23 +110,51 @@ export type KickChatMessage = {
 };
 
 export async function getRecentChat(slug: string): Promise<KickChatMessage[]> {
-  // Resolve channel id (chatroom id) once
+  // Resolve chatroom id once
   const ch = await kickFetch(
     `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
   );
   const chatroomId = ch?.chatroom?.id;
-  if (!chatroomId) return [];
-  const data = await kickFetch(
-    `https://kick.com/api/v2/channels/${chatroomId}/messages`,
+  if (!chatroomId) {
+    console.warn(`[kick] no chatroom id for ${slug}`);
+    return [];
+  }
+
+  const endpoints = [
+    `https://kick.com/api/v2/chatrooms/${chatroomId}/messages`,
+    `https://kick.com/api/v1/chatrooms/${chatroomId}/messages`,
+    `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/messages`,
+  ];
+
+  for (const url of endpoints) {
+    const data = await kickFetch(url, {
+      headers: { Referer: `https://kick.com/${slug}` },
+    });
+    if (!data) continue;
+    const list: any[] =
+      data?.data?.messages ??
+      data?.messages ??
+      (Array.isArray(data?.data) ? data.data : null) ??
+      (Array.isArray(data) ? data : []);
+    if (!Array.isArray(list) || list.length === 0) continue;
+    const parsed = list
+      .map((m) => ({
+        id: String(m.id ?? m.uuid ?? ""),
+        content: String(m.content ?? m.message ?? ""),
+        username:
+          m.sender?.username ?? m.user?.username ?? m.username ?? "anon",
+        createdAt: m.created_at ?? m.createdAt ?? new Date().toISOString(),
+      }))
+      .filter((m) => m.id && m.content)
+      .slice(0, 50);
+    console.log(
+      `[kick] chat for ${slug} via ${url} → ${parsed.length} messages`,
+    );
+    if (parsed.length > 0) return parsed;
+  }
+
+  console.warn(
+    `[kick] all chat endpoints empty for ${slug} (chatroomId=${chatroomId})`,
   );
-  const list: any[] = data?.data?.messages ?? data?.messages ?? data?.data ?? [];
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((m) => ({
-      id: String(m.id ?? ""),
-      content: String(m.content ?? ""),
-      username: m.sender?.username ?? m.username ?? "anon",
-      createdAt: m.created_at ?? new Date().toISOString(),
-    }))
-    .filter((m) => m.id && m.content);
+  return [];
 }
