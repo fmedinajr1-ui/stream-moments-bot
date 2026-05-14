@@ -18,6 +18,7 @@ import { Route as AppPipelineRouteImport } from './routes/_app.pipeline'
 import { Route as AppLibraryRouteImport } from './routes/_app.library'
 import { Route as AppCampaignsRouteImport } from './routes/_app.campaigns'
 import { Route as AppAnalyticsRouteImport } from './routes/_app.analytics'
+import { Route as ApiPublicUploadClipRouteImport } from './routes/api/public/upload-clip'
 import { Route as ApiPublicHooksShotstackRouteImport } from './routes/api/public/hooks/shotstack'
 import { Route as ApiPublicCronPollKickRouteImport } from './routes/api/public/cron/poll-kick'
 import { Route as ApiPublicCronExportTrainingRouteImport } from './routes/api/public/cron/export-training'
@@ -68,6 +69,11 @@ const AppAnalyticsRoute = AppAnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiPublicUploadClipRoute = ApiPublicUploadClipRouteImport.update({
+  id: '/api/public/upload-clip',
+  path: '/api/public/upload-clip',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksShotstackRoute = ApiPublicHooksShotstackRouteImport.update({
   id: '/api/public/hooks/shotstack',
   path: '/api/public/hooks/shotstack',
@@ -104,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
+  '/api/public/upload-clip': typeof ApiPublicUploadClipRoute
   '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/sources': typeof AppSourcesRoute
   '/template': typeof AppTemplateRoute
   '/': typeof AppIndexRoute
+  '/api/public/upload-clip': typeof ApiPublicUploadClipRoute
   '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/_app/sources': typeof AppSourcesRoute
   '/_app/template': typeof AppTemplateRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/upload-clip': typeof ApiPublicUploadClipRoute
   '/api/public/cron/backfill': typeof ApiPublicCronBackfillRoute
   '/api/public/cron/chat-pulse': typeof ApiPublicCronChatPulseRoute
   '/api/public/cron/export-training': typeof ApiPublicCronExportTrainingRoute
@@ -153,6 +162,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sources'
     | '/template'
+    | '/api/public/upload-clip'
     | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/sources'
     | '/template'
     | '/'
+    | '/api/public/upload-clip'
     | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/_app/sources'
     | '/_app/template'
     | '/_app/'
+    | '/api/public/upload-clip'
     | '/api/public/cron/backfill'
     | '/api/public/cron/chat-pulse'
     | '/api/public/cron/export-training'
@@ -193,6 +205,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  ApiPublicUploadClipRoute: typeof ApiPublicUploadClipRoute
   ApiPublicCronBackfillRoute: typeof ApiPublicCronBackfillRoute
   ApiPublicCronChatPulseRoute: typeof ApiPublicCronChatPulseRoute
   ApiPublicCronExportTrainingRoute: typeof ApiPublicCronExportTrainingRoute
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAnalyticsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/public/upload-clip': {
+      id: '/api/public/upload-clip'
+      path: '/api/public/upload-clip'
+      fullPath: '/api/public/upload-clip'
+      preLoaderRoute: typeof ApiPublicUploadClipRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/shotstack': {
       id: '/api/public/hooks/shotstack'
       path: '/api/public/hooks/shotstack'
@@ -329,6 +349,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  ApiPublicUploadClipRoute: ApiPublicUploadClipRoute,
   ApiPublicCronBackfillRoute: ApiPublicCronBackfillRoute,
   ApiPublicCronChatPulseRoute: ApiPublicCronChatPulseRoute,
   ApiPublicCronExportTrainingRoute: ApiPublicCronExportTrainingRoute,
