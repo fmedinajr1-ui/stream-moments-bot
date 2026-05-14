@@ -1,7 +1,7 @@
 // Shotstack render API wrapper.
 // Docs: https://shotstack.io/docs/api/
 
-const SHOTSTACK_API_BASE = "https://api.shotstack.io/edit/stage"; // 'stage' is free tier; switch to /v1 for prod
+const SHOTSTACK_API_BASE = "https://api.shotstack.io/edit/v1";
 
 export type RenderRequest = {
   sourceUrl: string;
@@ -52,6 +52,7 @@ export async function submitRender(req: RenderRequest): Promise<{
                 type: "video",
                 src: req.sourceUrl,
                 trim: req.trimStart,
+                transcode: true,
                 crop: { top: 0, bottom: 0, left: 0.281, right: 0.281 },
               },
               start: 0,
