@@ -190,3 +190,43 @@ export const recordDownload = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+export const listLiveSources = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const { data, error } = await supabaseAdmin
+      .from("sources")
+      .select("id,slug,display_name,last_known_live,avg_viewers,is_monitoring")
+      .eq("is_monitoring", true)
+      .order("last_known_live", { ascending: false })
+      .order("display_name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return { sources: data ?? [] };
+  },
+);
+
+export const manualGrabClip = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        sourceId: z.string().uuid(),
+        caption: z.string().max(80).optional(),
+        durationSec: z.number().int().min(15).max(60).default(30),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { data: src, error } = await supabaseAdmin
+      .from("sources")
+      .select("slug,display_name")
+      .eq("id", data.sourceId)
+      .single();
+    if (error || !src) throw new Error("source not found");
+    const result = await createSpikeClip({
+      sourceId: data.sourceId,
+      slug: src.slug,
+      hookCaption:
+        data.caption?.trim() ||
+        `${(src.display_name ?? src.slug).toUpperCase()} MANUAL GRAB`,
+    });
+    return result;
+  });
