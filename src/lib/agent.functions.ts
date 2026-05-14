@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { pollSources } from "@/lib/poll-kick.server";
+import { createSpikeClip } from "@/lib/spike-clip.server";
 
 export const getAgentSettings = createServerFn({ method: "GET" }).handler(
   async () => {
@@ -193,6 +194,31 @@ export const stopForceWatchSource = createServerFn({ method: "POST" })
       .eq("id", data.sourceId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+export const clipNowFromLive = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        sourceId: z.string().uuid(),
+        durationSec: z.number().int().min(10).max(120).default(30),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { data: src, error } = await supabaseAdmin
+      .from("sources")
+      .select("id, slug")
+      .eq("id", data.sourceId)
+      .maybeSingle();
+    if (error || !src) throw new Error(error?.message ?? "source not found");
+
+    const res = await createSpikeClip({
+      sourceId: src.id,
+      slug: src.slug,
+      hookCaption: `${src.slug.toUpperCase()} LIVE CAPTURE`,
+    });
+    return res;
   });
 
 export const getLatestTrainingExportUrl = createServerFn({

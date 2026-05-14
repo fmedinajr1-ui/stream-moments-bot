@@ -10,6 +10,7 @@ import {
   runPollNow,
 } from "@/lib/clips.functions";
 import {
+  clipNowFromLive,
   forceWatchSource,
   getLatestChatVelocity,
   stopForceWatchSource,
@@ -51,6 +52,7 @@ function SourcesPage() {
   const setSens = useServerFn(updateSourceSensitivity);
   const forceWatch = useServerFn(forceWatchSource);
   const stopForce = useServerFn(stopForceWatchSource);
+  const clipNow = useServerFn(clipNowFromLive);
   const [forceMins, setForceMins] = useState(30);
 
   const { data: vel } = useQuery({
@@ -123,6 +125,18 @@ function SourcesPage() {
       toast.success("STOPPED FORCE WATCH");
       refetch();
     },
+  });
+  const clipNowMut = useMutation({
+    mutationFn: (sourceId: string) => clipNow({ data: { sourceId } }),
+    onSuccess: (r: any) => {
+      if (r?.ok) {
+        toast.success("CLIPPING LIVE MOMENT — RENDERING NOW");
+      } else {
+        toast.error(r?.error ?? "Clip failed");
+      }
+      refetch();
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Clip failed"),
   });
 
   async function toggleMonitor(s: Source) {
@@ -283,6 +297,13 @@ function SourcesPage() {
               );
             })()}
             <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => clipNowMut.mutate(s.id)}
+                disabled={clipNowMut.isPending}
+                className="flex-1 text-[10px] font-mono tracking-widest bg-gold text-background px-2 py-1.5 hover:opacity-90 disabled:opacity-50"
+              >
+                {clipNowMut.isPending ? "CLIPPING…" : "CLIP NOW"}
+              </button>
               <button
                 onClick={() => pollMut.mutate(s.id)}
                 disabled={pollMut.isPending}
