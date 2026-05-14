@@ -1,48 +1,80 @@
-# Fix: live clips pulling stale archive + oversized captions
+# Live watch + manual clip capture on Queue page
 
-## What's actually happening
+## What we're adding
 
-Both questions trace to the same render path.
+A live watcher panel at the top of `/` (Queue) so you can see what your monitored streamer is doing in real time, hit a button to grab a clip whenever the moment is good, and feed those manual grabs back to the AI as training signal.
 
-### 1. "Are these old clips?"
-Yes — kind of. Every recent render hit this VOD URL:
+## UI changes
+
+### `src/routes/_app.index.tsx` — new "LIVE NOW" panel above filters
 
 ```
-.../2026/5/12/23/44/.../master.m3u8   start_offset_sec ≈ 150,000  (~42h in)
+┌─────────────────────────────────────────────────────────────┐
+│  LIVE NOW                                                    │
+│  [streamer dropdown ▼]  ● LIVE • 12.4k viewers              │
+│                                                              │
+│  ┌─────────────────────────────┐   CAPTURE THIS MOMENT       │
+│  │                             │   ┌──────────────────────┐  │
+│  │   <Kick iframe player>      │   │ caption (optional)   │  │
+│  │   16:9, autoplay muted      │   └──────────────────────┘  │
+│  │                             │   duration: [15 30 45]      │
+│  └─────────────────────────────┘   [ ▶ GRAB CLIP NOW ]       │
+│                                                              │
+│  Last manual grab: 2m ago • DEENTHEGREAT laughing fit       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-Deen's stream has been live since **May 12 23:44 UTC**. Kick exposes the in-progress session as a "video" with a continuously growing `duration`, so `resolveVodAt()` matches it and computes a 42-hour offset into the archive playlist. That archive is real but lags / can return earlier session segments, so the clip plays footage that doesn't match what's on stream right now.
+- Player: `<iframe src="https://player.kick.com/{slug}?muted=true&autoplay=true">`
+- Streamer dropdown only lists sources where `last_known_live = true` (falls back to all monitored if none live).
+- "GRAB CLIP NOW" calls a new server fn → reuses `createSpikeClip()` with `hookCaption` from the textarea and `timestampIso = now()`.
+- A small toast confirms ("CLIP QUEUED — RENDERING") and the new clip flows into the queue below within ~30s like any other.
 
-Fix: when the channel is **currently live**, ignore VOD lookup and capture from the **live edge** instead. The live HLS playlist always contains the most recent ~30–60s, which is exactly what a "spike right now" clip should show.
+### Queue card already exists — no change there.
 
-### 2. "Subtitles too large"
-In `shotstack.server.ts` the title asset is:
+## Server changes
+
+### `src/lib/clips.functions.ts` — new `manualGrabClip`
+```ts
+export const manualGrabClip = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({
+    sourceId: z.string().uuid(),
+    caption: z.string().max(80).optional(),
+    durationSec: z.number().min(15).max(60).default(30),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const { data: src } = await supabaseAdmin
+      .from("sources").select("slug").eq("id", data.sourceId).single();
+    if (!src) throw new Error("source not found");
+    return createSpikeClip({
+      sourceId: data.sourceId,
+      slug: src.slug,
+      hookCaption: data.caption,
+      // No spikeRatio / msgsPerSec — this is human-flagged.
+    });
+  });
 ```
-style: "future", size: "large", background: "#000000", position: "bottom"
-```
-On a 1080×1920 9:16 frame that "large" + black bar fills almost the full width and crops words ("EGREAT  LIVE C…" in the screenshot). Needs smaller size, no full-bleed bar, safe-zone padding.
 
-## Changes
+The clip lands with `score_rationale = "Manual live capture"` (already handled in `spike-clip.server.ts`), so we can later filter `clips WHERE score_rationale LIKE 'Manual%'` for training data.
 
-### `src/lib/render-runner.server.ts`
-- Call `getKickLivePlaybackUrl(slug)` **first**.
-- If live URL exists → use live mode (no VOD lookup, `startOffsetSec = null`, capture trailing window).
-- Only fall back to `resolveVodAt()` when channel is offline (no live URL).
-- Keep the VOD path for past moments / backfill.
+### `src/lib/clips.functions.ts` — new `listLiveSources`
+Small helper for the dropdown — returns `{ id, slug, display_name, last_known_live, avg_viewers }` from `sources` ordered by `last_known_live DESC, display_name ASC`.
 
-### `src/lib/hls-capture.server.ts`
-- In `mode: "live"`, when reading the media playlist, drop all but the last `durationSec` worth of segments (current behavior may grab from playlist head). Ensures we capture the actual live edge, not the start of the rolling window.
+## On the "capture through the player instead of Kick" idea
 
-### `src/lib/shotstack.server.ts` — caption sizing
-Replace the title asset block with one tuned for 9:16:
-- `size: "small"` (was `large`)
-- Remove `background` (no full-width black bar) — rely on text stroke for legibility
-- `position: "bottom"` kept, but caption length cap drops from 80 → **42 chars** so it fits one line at 1080 wide
-- Optionally swap `style: "future"` → `style: "minimal"` for tighter glyphs
+I want to be straight with you before building it: **the browser can't record the Kick iframe**. It's cross-origin and (where DRM is active) protected. The two viable paths are:
+- **Keep server-side HLS capture** (current path) — already works when the live `playback_url` resolves; we just hardened it against Cloudflare 403s. This is what `manualGrabClip` will use.
+- **You-as-relay** (much later, optional): run a tiny Node helper on your machine that pulls the HLS and pushes segments to our Storage. Works around Cloudflare entirely but needs you to keep the helper running.
 
-## Out of scope
-- Burning word-by-word subtitles from transcription (separate feature).
-- Re-rendering the two existing "old" clips — once the fix lands, the next spike will render correctly. I can also re-queue the two failed/old ones with `retryRender` after the change if you want.
+For now, `manualGrabClip` gives you the "I see it, grab it" workflow without changing the capture pipeline. If Kick blocks our server's live URL fetch at the moment you click, the clip row is still created with status `failed` and a clear error — and the moment timestamp is preserved as training data either way.
 
-## Risk
-Low — both files are server-side, behind the existing `render_jobs` retry path. If live capture fails, the runner already records `failed` with an error message and the Library shows a RETRY button.
+## Training feedback loop (free with this change)
+Every manual grab is implicitly a positive label. Later we can:
+- Compare `chat_velocity` rows around manual-grab timestamps vs. spike-only grabs to learn what chat patterns YOU find clip-worthy.
+- Tune `agent_settings.min_score_threshold` per streamer based on grab/reject ratios.
+
+Out of scope for this turn — flag it when you want it.
+
+## Files touched
+- `src/routes/_app.index.tsx` — add LiveWatch panel
+- `src/lib/clips.functions.ts` — add `manualGrabClip`, `listLiveSources`
+- (no DB migration needed)
