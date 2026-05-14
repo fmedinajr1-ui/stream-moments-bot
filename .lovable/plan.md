@@ -1,45 +1,62 @@
-# Live sound + new source + mobile dashboard
+# Live Watch upgrades + Clip History Timeline
 
-## 1. Fix audio on the live player
+Three additions to the dashboard (`src/routes/_app.index.tsx`), all powered by data we already collect.
 
-Browsers block autoplay-with-sound, so Kick's iframe starts muted and there's no built-in unmute control reachable from outside (cross-origin iframe).
+## 1. Multi-stream Live Watch (see all live at once)
 
-- Start the iframe muted (required for autoplay to work at all).
-- Add an **"UNMUTE"** overlay button on top of the player. On click, swap the iframe `src` from `?muted=true&autoplay=true` to `?muted=false&autoplay=true` (forces a reload with sound, which now counts as user-gesture-initiated).
-- Add `allow="autoplay; fullscreen; encrypted-media"` so audio + DRM segments play.
-- Show a small "TAP TO UNMUTE" hint over the player while muted.
+Today Live Watch shows ONE iframe at a time via a dropdown. Switch to a grid:
 
-## 2. Add Adrien Broner as a tracked source
+- Render an iframe tile for **every source where `last_known_live = true`** (or `force_live_until > now`).
+- Layout: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`, each tile `aspect-video`.
+- Each tile gets its own header strip with: name, LIVE dot, viewer count, the existing UNMUTE toggle (per-tile state — only one unmuted at a time, clicking unmute on tile B mutes tile A so audio doesn't pile up).
+- Each tile keeps its own GRAB CLIP button + caption input directly underneath (compact form), so we can clip from any stream without switching focus.
+- Offline sources collapse into a small "OFFLINE (3): ab, rampage, ..." footer row with a "force live" link kept for later.
+- Old single-stream dropdown removed.
 
-- Insert a new row in `sources`: `slug = adrienbroner`, `display_name = ADRIEN BRONER`, `is_monitoring = true`.
-- Leave the existing `ab` / `AB` row alone (you can rename or delete later — say the word).
-- Rampage (`rampagejackson`) is already tracked and currently live, so he'll show in the dropdown automatically when live.
+## 2. Live chat-spike activity overlay + spike tracker
 
-The Live Watch dropdown already lists everyone in `sources` ordered by `last_known_live DESC`, so Broner appears the moment the next poll marks him live (and is still selectable when offline).
+We already poll chat with `runChatPulse` every minute and write `chat_velocity` rows (msgs/sec, baseline, spike_ratio, is_spike, sample_messages). Surface that:
 
-## 3. Make the whole dashboard mobile-friendly (iPhone)
+**Per-tile spike meter (overlay on each Live Watch iframe):**
+- Bottom-left badge showing current `msgs_per_sec` and a thin horizontal bar colored by `spike_ratio`:
+  - grey (<1.2x), gold (1.2–2x), blood-red pulsing (≥2x = spike)
+- Updates every 15s by querying the latest `chat_velocity` row per source.
 
-Today the index page assumes desktop width. Fixes, all CSS/layout only:
+**New "SPIKE TRACKER" panel** under Live Watch:
+- Horizontal sparkline strip per live source showing the last ~30 minutes of `msgs_per_sec` (one row per source), with red dots where `is_spike = true`.
+- Hovering a red dot shows: timestamp, ratio, top sample message, and — if a clip was created from that spike (`matched_velocity_id`) — a link to it.
+- "TRACK ALL" toggle: when on, refreshes every 10s; off = static.
 
-- **Header bar** (`_app.index.tsx` top strip): wrap the LIVE / NEW CLIPS / PAUSE row so it stacks 2-up on `<sm`, PAUSE button becomes full-width.
-- **LiveWatchPanel**:
-  - Header row: stack title + dropdown vertically on mobile, dropdown becomes full-width.
-  - Body grid `grid-cols-1 lg:grid-cols-[2fr_1fr]` already stacks; tighten padding to `p-3` on mobile.
-  - Caption input + duration buttons: bigger touch targets (`py-3`, `text-sm`).
-  - GRAB CLIP button: full-width, sticky-ish at bottom of the panel on mobile.
-- **Filter bar** (STREAMER / MIN SCORE): already uses `flex-wrap` but the score grid + slider crowd at 375px — switch the streamer select to `w-full sm:w-auto` and reduce horizontal padding.
-- **Clip grid**: already `grid-cols-1 lg:grid-cols-2` — fine. Verify `ClipCard` internals don't overflow (action buttons row may need `flex-wrap`).
-- Add `viewport-fit=cover` meta if not present, and bump base touch targets in the action buttons to min 44×44 px (iOS guideline).
-- Hide the desktop-only "PRESS SPACE" hint on mobile (already gated by `hidden md:block`, keep).
-- Set the editor preview to mobile so you can iterate visually.
+New server fn `listLiveChatActivity` in `src/lib/clips.functions.ts`:
+- Returns, per live source: latest velocity row + last 30 min of `(created_at, msgs_per_sec, is_spike, spike_ratio, clip_id)` rows.
+- Powers both the per-tile badge and the Spike Tracker sparklines.
+
+## 3. Clip History Timeline
+
+New panel "RECENT GRABS" between the status bar and Live Watch:
+
+- Horizontal scrolling timeline (newest left), one chip per clip from the last 24h.
+- Each chip: thumbnail (or placeholder), `HH:MM:SS` timestamp, source name, hook caption truncated to 40 chars, and a tiny status dot (processing / approved / rejected).
+- Click → opens the clip in the existing queue card (scroll-to + focus).
+- Auto-refreshes every 30s.
+
+New server fn `listRecentClips` (last 24h, all statuses, limit 40) in `src/lib/clips.functions.ts`. Reuses existing `clips` columns — no schema changes.
 
 ## Files touched
 
-- `src/routes/_app.index.tsx` — unmute toggle + mobile-responsive classes throughout, including `LiveWatchPanel` and the header/filter rows.
-- `src/components/ClipCard.tsx` (only if action row overflows on 375px width — read first, edit only if needed).
-- DB migration: `INSERT INTO sources (slug, display_name) VALUES ('adrienbroner', 'ADRIEN BRONER');`
+- `src/lib/clips.functions.ts` — add `listLiveChatActivity` + `listRecentClips`.
+- `src/routes/_app.index.tsx` — replace `LiveWatchPanel` with multi-stream grid; add `SpikeTrackerPanel` and `RecentGrabsTimeline` components in the same file (or split into `src/components/live-watch-grid.tsx`, `spike-tracker.tsx`, `recent-grabs-timeline.tsx` for readability — recommend splitting).
 
-## Out of scope (say the word and I'll do it)
+## Out of scope
 
-- Removing/renaming the existing `ab` source row.
-- A custom HLS player (would let us mute/unmute without reloading the iframe, but requires server-side HLS proxying — bigger lift).
+- No DB migrations (all data already collected).
+- No changes to chat-pulse cadence (still every minute via cron).
+- Not auto-pausing/muting tiles when many streams are live — single-unmute rule is enough.
+
+## Open question
+
+Streaming 5+ Kick iframes simultaneously is heavy on CPU/bandwidth. Two options:
+- **A.** Render all live iframes (best situational awareness, may chug on iPhone).
+- **B.** Render thumbnails/poster images for all live sources, only mount the iframe when you click "WATCH" on a tile (lighter).
+
+Default: **A** on desktop, auto-fallback to **B** on `<sm` viewport. Say the word if you want B everywhere.

@@ -204,6 +204,60 @@ export const listLiveSources = createServerFn({ method: "GET" }).handler(
   },
 );
 
+export const listRecentClips = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data, error } = await supabaseAdmin
+      .from("clips")
+      .select(
+        "id,created_at,stream_timestamp,hook_caption,title,status,virality_score,thumbnail_url,chat_spike_ratio,sources(slug,display_name)",
+      )
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(40);
+    if (error) throw new Error(error.message);
+    return { clips: data ?? [] };
+  },
+);
+
+export const listLiveChatActivity = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const nowIso = new Date().toISOString();
+    const { data: sources, error: srcErr } = await supabaseAdmin
+      .from("sources")
+      .select("id,slug,display_name,last_known_live,force_live_until")
+      .eq("is_monitoring", true)
+      .or(`last_known_live.eq.true,force_live_until.gt.${nowIso}`);
+    if (srcErr) throw new Error(srcErr.message);
+
+    const since = new Date(Date.now() - 30 * 60_000).toISOString();
+    const ids = (sources ?? []).map((s) => s.id);
+    if (!ids.length) return { sources: [] as any[] };
+
+    const { data: vel, error: velErr } = await supabaseAdmin
+      .from("chat_velocity")
+      .select("source_id,created_at,msgs_per_sec,baseline_msgs_per_sec,spike_ratio,is_spike,clip_id,sample_messages")
+      .in("source_id", ids)
+      .gte("created_at", since)
+      .order("created_at", { ascending: true });
+    if (velErr) throw new Error(velErr.message);
+
+    const byId = new Map<string, any[]>();
+    for (const r of vel ?? []) {
+      const arr = byId.get(r.source_id) ?? [];
+      arr.push(r);
+      byId.set(r.source_id, arr);
+    }
+    return {
+      sources: (sources ?? []).map((s) => {
+        const series = byId.get(s.id) ?? [];
+        const latest = series[series.length - 1] ?? null;
+        return { ...s, latest, series };
+      }),
+    };
+  },
+);
+
 export const manualGrabClip = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
