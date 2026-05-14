@@ -59,23 +59,37 @@ export function SpikeTrackerPanel() {
     refetchInterval: trackAll ? 10_000 : false,
   });
   const sources = (data?.sources ?? []) as Array<any>;
+  const settings = (data as any)?.settings ?? null;
   if (!sources.length) return null;
 
   const totalSpikes = sources.reduce(
     (a, s) => a + (s.series ?? []).filter((r: VRow) => r.is_spike).length,
     0,
   );
+  const armed = settings?.auto_grab_enabled !== false && !settings?.is_paused;
 
   return (
     <section className="bg-panel border border-blood/40 px-3 sm:px-4 py-3">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-baseline gap-3 flex-wrap">
           <h3 className="font-display text-sm sm:text-base tracking-widest text-foreground">
             SPIKE TRACKER · 30M
           </h3>
           <span className="text-[10px] font-mono text-muted-foreground tracking-widest">
             {totalSpikes} SPIKE{totalSpikes === 1 ? "" : "S"}
           </span>
+          {settings && (
+            <span
+              className={`text-[10px] font-mono tracking-widest px-2 py-0.5 border ${
+                armed
+                  ? "bg-blood/10 text-blood border-blood"
+                  : "border-muted-foreground/40 text-muted-foreground"
+              }`}
+              title="Auto-grab settings"
+            >
+              {armed ? "● AUTO-GRAB ARMED" : "○ AUTO-GRAB OFF"} · ≥{Number(settings.spike_min_mps).toFixed(1)}/s · {settings.spike_window_sec}s · cd {settings.auto_grab_cooldown_sec}s
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -97,6 +111,9 @@ export function SpikeTrackerPanel() {
               : ratio >= 1.2
                 ? "text-gold"
                 : "text-muted-foreground";
+          const lg = s.lastAutoGrab;
+          const lgAgoSec = lg ? Math.round((Date.now() - +new Date(lg.created_at)) / 1000) : null;
+          const recentlyTriggered = lgAgoSec !== null && lgAgoSec < 300;
           return (
             <div
               key={s.id}
@@ -107,8 +124,18 @@ export function SpikeTrackerPanel() {
                 <span className="text-xs font-mono tracking-widest text-foreground truncate">
                   {s.display_name}
                 </span>
+                {recentlyTriggered && (
+                  <span className="text-xs animate-pulse-dot" title={`Auto-grabbed ${lgAgoSec}s ago`}>🔥</span>
+                )}
               </div>
-              <Sparkline series={(s.series ?? []) as VRow[]} />
+              <div>
+                <Sparkline series={(s.series ?? []) as VRow[]} />
+                {lg && (
+                  <div className="text-[10px] font-mono text-muted-foreground tracking-widest mt-0.5 truncate">
+                    LAST AUTO · {lgAgoSec}s ago · {(lg.hook_caption ?? "").slice(0, 40)}
+                  </div>
+                )}
+              </div>
               <div className={`text-right text-xs font-mono tracking-widest ${ratioColor}`}>
                 {latest ? `${Number(latest.msgs_per_sec).toFixed(1)}/s` : "—"}
                 <div className="text-[10px] text-muted-foreground">
