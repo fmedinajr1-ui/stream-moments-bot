@@ -1,80 +1,45 @@
-# Live watch + manual clip capture on Queue page
+# Live sound + new source + mobile dashboard
 
-## What we're adding
+## 1. Fix audio on the live player
 
-A live watcher panel at the top of `/` (Queue) so you can see what your monitored streamer is doing in real time, hit a button to grab a clip whenever the moment is good, and feed those manual grabs back to the AI as training signal.
+Browsers block autoplay-with-sound, so Kick's iframe starts muted and there's no built-in unmute control reachable from outside (cross-origin iframe).
 
-## UI changes
+- Start the iframe muted (required for autoplay to work at all).
+- Add an **"UNMUTE"** overlay button on top of the player. On click, swap the iframe `src` from `?muted=true&autoplay=true` to `?muted=false&autoplay=true` (forces a reload with sound, which now counts as user-gesture-initiated).
+- Add `allow="autoplay; fullscreen; encrypted-media"` so audio + DRM segments play.
+- Show a small "TAP TO UNMUTE" hint over the player while muted.
 
-### `src/routes/_app.index.tsx` — new "LIVE NOW" panel above filters
+## 2. Add Adrien Broner as a tracked source
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  LIVE NOW                                                    │
-│  [streamer dropdown ▼]  ● LIVE • 12.4k viewers              │
-│                                                              │
-│  ┌─────────────────────────────┐   CAPTURE THIS MOMENT       │
-│  │                             │   ┌──────────────────────┐  │
-│  │   <Kick iframe player>      │   │ caption (optional)   │  │
-│  │   16:9, autoplay muted      │   └──────────────────────┘  │
-│  │                             │   duration: [15 30 45]      │
-│  └─────────────────────────────┘   [ ▶ GRAB CLIP NOW ]       │
-│                                                              │
-│  Last manual grab: 2m ago • DEENTHEGREAT laughing fit       │
-└─────────────────────────────────────────────────────────────┘
-```
+- Insert a new row in `sources`: `slug = adrienbroner`, `display_name = ADRIEN BRONER`, `is_monitoring = true`.
+- Leave the existing `ab` / `AB` row alone (you can rename or delete later — say the word).
+- Rampage (`rampagejackson`) is already tracked and currently live, so he'll show in the dropdown automatically when live.
 
-- Player: `<iframe src="https://player.kick.com/{slug}?muted=true&autoplay=true">`
-- Streamer dropdown only lists sources where `last_known_live = true` (falls back to all monitored if none live).
-- "GRAB CLIP NOW" calls a new server fn → reuses `createSpikeClip()` with `hookCaption` from the textarea and `timestampIso = now()`.
-- A small toast confirms ("CLIP QUEUED — RENDERING") and the new clip flows into the queue below within ~30s like any other.
+The Live Watch dropdown already lists everyone in `sources` ordered by `last_known_live DESC`, so Broner appears the moment the next poll marks him live (and is still selectable when offline).
 
-### Queue card already exists — no change there.
+## 3. Make the whole dashboard mobile-friendly (iPhone)
 
-## Server changes
+Today the index page assumes desktop width. Fixes, all CSS/layout only:
 
-### `src/lib/clips.functions.ts` — new `manualGrabClip`
-```ts
-export const manualGrabClip = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({
-    sourceId: z.string().uuid(),
-    caption: z.string().max(80).optional(),
-    durationSec: z.number().min(15).max(60).default(30),
-  }).parse(d))
-  .handler(async ({ data }) => {
-    const { data: src } = await supabaseAdmin
-      .from("sources").select("slug").eq("id", data.sourceId).single();
-    if (!src) throw new Error("source not found");
-    return createSpikeClip({
-      sourceId: data.sourceId,
-      slug: src.slug,
-      hookCaption: data.caption,
-      // No spikeRatio / msgsPerSec — this is human-flagged.
-    });
-  });
-```
-
-The clip lands with `score_rationale = "Manual live capture"` (already handled in `spike-clip.server.ts`), so we can later filter `clips WHERE score_rationale LIKE 'Manual%'` for training data.
-
-### `src/lib/clips.functions.ts` — new `listLiveSources`
-Small helper for the dropdown — returns `{ id, slug, display_name, last_known_live, avg_viewers }` from `sources` ordered by `last_known_live DESC, display_name ASC`.
-
-## On the "capture through the player instead of Kick" idea
-
-I want to be straight with you before building it: **the browser can't record the Kick iframe**. It's cross-origin and (where DRM is active) protected. The two viable paths are:
-- **Keep server-side HLS capture** (current path) — already works when the live `playback_url` resolves; we just hardened it against Cloudflare 403s. This is what `manualGrabClip` will use.
-- **You-as-relay** (much later, optional): run a tiny Node helper on your machine that pulls the HLS and pushes segments to our Storage. Works around Cloudflare entirely but needs you to keep the helper running.
-
-For now, `manualGrabClip` gives you the "I see it, grab it" workflow without changing the capture pipeline. If Kick blocks our server's live URL fetch at the moment you click, the clip row is still created with status `failed` and a clear error — and the moment timestamp is preserved as training data either way.
-
-## Training feedback loop (free with this change)
-Every manual grab is implicitly a positive label. Later we can:
-- Compare `chat_velocity` rows around manual-grab timestamps vs. spike-only grabs to learn what chat patterns YOU find clip-worthy.
-- Tune `agent_settings.min_score_threshold` per streamer based on grab/reject ratios.
-
-Out of scope for this turn — flag it when you want it.
+- **Header bar** (`_app.index.tsx` top strip): wrap the LIVE / NEW CLIPS / PAUSE row so it stacks 2-up on `<sm`, PAUSE button becomes full-width.
+- **LiveWatchPanel**:
+  - Header row: stack title + dropdown vertically on mobile, dropdown becomes full-width.
+  - Body grid `grid-cols-1 lg:grid-cols-[2fr_1fr]` already stacks; tighten padding to `p-3` on mobile.
+  - Caption input + duration buttons: bigger touch targets (`py-3`, `text-sm`).
+  - GRAB CLIP button: full-width, sticky-ish at bottom of the panel on mobile.
+- **Filter bar** (STREAMER / MIN SCORE): already uses `flex-wrap` but the score grid + slider crowd at 375px — switch the streamer select to `w-full sm:w-auto` and reduce horizontal padding.
+- **Clip grid**: already `grid-cols-1 lg:grid-cols-2` — fine. Verify `ClipCard` internals don't overflow (action buttons row may need `flex-wrap`).
+- Add `viewport-fit=cover` meta if not present, and bump base touch targets in the action buttons to min 44×44 px (iOS guideline).
+- Hide the desktop-only "PRESS SPACE" hint on mobile (already gated by `hidden md:block`, keep).
+- Set the editor preview to mobile so you can iterate visually.
 
 ## Files touched
-- `src/routes/_app.index.tsx` — add LiveWatch panel
-- `src/lib/clips.functions.ts` — add `manualGrabClip`, `listLiveSources`
-- (no DB migration needed)
+
+- `src/routes/_app.index.tsx` — unmute toggle + mobile-responsive classes throughout, including `LiveWatchPanel` and the header/filter rows.
+- `src/components/ClipCard.tsx` (only if action row overflows on 375px width — read first, edit only if needed).
+- DB migration: `INSERT INTO sources (slug, display_name) VALUES ('adrienbroner', 'ADRIEN BRONER');`
+
+## Out of scope (say the word and I'll do it)
+
+- Removing/renaming the existing `ab` source row.
+- A custom HLS player (would let us mute/unmute without reloading the iframe, but requires server-side HLS proxying — bigger lift).
