@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listApprovedClips, recordDownload } from "@/lib/clips.functions";
-import { retryRender } from "@/lib/render.functions";
+import { retryRender, regrabClip } from "@/lib/render.functions";
 
 export const Route = createFileRoute("/_app/library")({
   component: LibraryPage,
