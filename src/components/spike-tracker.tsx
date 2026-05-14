@@ -90,13 +90,19 @@ export function SpikeTrackerPanel() {
           {settings && (
             <span
               className={`text-[10px] font-mono tracking-widest px-2 py-0.5 border ${
-                armed
+                chatSignalLive
                   ? "bg-blood/10 text-blood border-blood"
                   : "border-muted-foreground/40 text-muted-foreground"
               }`}
-              title="Auto-grab settings"
+              title={
+                chatSignalLive
+                  ? "Chat signal live — spikes can boost clip scores"
+                  : "Chat signal unavailable from upstream API. Capture still works via VOD-resolved marked moments."
+              }
             >
-              {armed ? "● AUTO-GRAB ARMED" : "○ AUTO-GRAB OFF"} · ≥{Number(settings.spike_min_mps).toFixed(1)}/s · {settings.spike_window_sec}s · cd {settings.auto_grab_cooldown_sec}s
+              {chatSignalLive
+                ? `● CHAT LIVE · ≥${Number(settings.spike_min_mps).toFixed(1)}/s · ${settings.spike_window_sec}s`
+                : "○ CHAT SIGNAL UNAVAILABLE"}
             </span>
           )}
         </div>
