@@ -136,7 +136,7 @@ function LibraryPage() {
   return (
     <div className="space-y-6">
       <div className="border-b border-blood/40 pb-4">
-        <h2 className="font-display text-4xl tracking-wider">LIBRARY</h2>
+        <h2 className="font-display text-2xl sm:text-3xl md:text-4xl tracking-wider">LIBRARY</h2>
         <p className="text-xs font-mono text-muted-foreground mt-1 tracking-widest">
           {clips.length} APPROVED CLIPS — DOWNLOAD MP4, METADATA, OR CAPCUT
           MANIFEST
@@ -145,7 +145,7 @@ function LibraryPage() {
 
       {clips.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-32 text-center">
-          <h3 className="font-display text-5xl text-foreground tracking-widest">
+          <h3 className="font-display text-3xl sm:text-4xl md:text-5xl text-foreground tracking-widest">
             NOTHING APPROVED YET
           </h3>
           <p className="mt-4 text-xs font-mono text-muted-foreground tracking-widest max-w-md">
