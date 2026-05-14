@@ -342,6 +342,12 @@ function LiveWatchPanel() {
   const [caption, setCaption] = useState("");
   const [duration, setDuration] = useState(30);
   const [lastGrab, setLastGrab] = useState<{ at: number; caption: string } | null>(null);
+  const [unmuted, setUnmuted] = useState(false);
+
+  // Reset to muted when switching streamer (autoplay only works muted)
+  useEffect(() => {
+    setUnmuted(false);
+  }, [selectedId]);
 
   // Default to first live source, else first source
   useEffect(() => {
