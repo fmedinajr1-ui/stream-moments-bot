@@ -231,24 +231,50 @@ function QueuePage() {
           </select>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 min-w-[260px]">
-          <label className="text-xs font-mono text-muted-foreground tracking-widest">
-            SCORE ≥
-          </label>
+        <div className="flex flex-col gap-2 flex-1 min-w-full sm:min-w-[280px]">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-mono text-muted-foreground tracking-widest">
+              MIN SCORE
+            </label>
+            <span className="text-gold font-mono text-base tabular-nums">
+              {minScore === 0 ? "ALL" : `≥ ${minScore}`}
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[
+              { label: "ALL", value: 0 },
+              { label: "60+", value: 60 },
+              { label: "75+", value: 75 },
+              { label: "90+", value: 90 },
+            ].map((p) => {
+              const active = minScore === p.value;
+              return (
+                <button
+                  key={p.label}
+                  onClick={() => setMinScore(p.value)}
+                  className={`py-2 text-xs font-mono tracking-widest border transition-colors ${
+                    active
+                      ? "bg-blood text-blood-foreground border-blood"
+                      : "border-blood/40 text-foreground hover:bg-blood/10"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
           <input
             type="range"
             min={0}
             max={100}
+            step={5}
             value={minScore}
             onChange={(e) => setMinScore(Number(e.target.value))}
-            className="flex-1 accent-blood"
+            className="w-full accent-blood h-3 touch-manipulation"
           />
-          <span className="text-gold font-mono text-sm w-10 text-right">
-            {minScore}
-          </span>
         </div>
 
-        <div className="text-xs font-mono text-muted-foreground tracking-widest">
+        <div className="hidden md:block text-xs font-mono text-muted-foreground tracking-widest">
           PRESS <kbd className="text-blood">SPACE</kbd> TO APPROVE FOCUSED
         </div>
       </div>
