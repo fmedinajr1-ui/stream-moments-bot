@@ -151,6 +151,50 @@ export const updateSourceSensitivity = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const forceWatchSource = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        sourceId: z.string().uuid(),
+        minutes: z.number().int().min(1).max(240).default(30),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const until = new Date(Date.now() + data.minutes * 60_000).toISOString();
+    const { error: upErr } = await supabaseAdmin
+      .from("sources")
+      .update({ force_live_until: until, last_known_live: true })
+      .eq("id", data.sourceId);
+    if (upErr) throw new Error(upErr.message);
+
+    // Kick off an immediate poll for this one source. Don't await long —
+    // chat-pulse cron will pick up the rest while force_live_until is set.
+    let pollResult: any = null;
+    try {
+      pollResult = await pollSources({ sourceId: data.sourceId });
+    } catch (err: any) {
+      console.error("[forceWatch] poll failed", err);
+    }
+    return {
+      ok: true,
+      until,
+      minutes: data.minutes,
+      new_clips: pollResult?.new_clips ?? 0,
+    };
+  });
+
+export const stopForceWatchSource = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ sourceId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { error } = await supabaseAdmin
+      .from("sources")
+      .update({ force_live_until: null })
+      .eq("id", data.sourceId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const getLatestTrainingExportUrl = createServerFn({
   method: "GET",
 }).handler(async () => {
