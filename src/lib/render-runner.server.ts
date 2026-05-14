@@ -32,6 +32,7 @@ export async function startRenderForClip(clipId: string) {
   }
 
   const slug = (clip as any).sources?.slug;
+  const sourceId = (clip as any).source_id as string | null;
   if (!slug) {
     await supabaseAdmin.from("render_jobs").insert({
       clip_id: clipId,
@@ -41,26 +42,63 @@ export async function startRenderForClip(clipId: string) {
     return { ok: false, error: "Missing slug" };
   }
 
+  // Pull the source's last_known_live so we trust the poller over a single
+  // (often Cloudflare-blocked) HTTP probe from this Worker.
+  let lastKnownLive = false;
+  let lastPolledAt: string | null = null;
+  if (sourceId) {
+    const { data: src } = await supabaseAdmin
+      .from("sources")
+      .select("last_known_live, last_polled_at")
+      .eq("id", sourceId)
+      .maybeSingle();
+    lastKnownLive = !!src?.last_known_live;
+    lastPolledAt = src?.last_polled_at ?? null;
+  }
+  const polledAgeMin = lastPolledAt
+    ? (Date.now() - +new Date(lastPolledAt)) / 60_000
+    : Infinity;
+  const treatAsLive = lastKnownLive && polledAgeMin < 10;
+
   // 1) If channel is live RIGHT NOW, capture from the live edge — Kick's
   //    archive playlist for an in-progress session can be hours stale and
   //    `resolveVodAt()` happily returns a 40+ hour offset into it.
-  // 2) Only fall back to VOD lookup when the channel is offline (e.g. for
-  //    backfill or post-stream clipping).
+  // 2) Only fall back to VOD lookup when the channel is genuinely offline.
   let playlistUrl: string | null = null;
   let startOffsetSec: number | null = null;
-  let mode: "vod" | "live" = "live";
+  let mode: "vod" | "live" = treatAsLive ? "live" : "vod";
 
-  const live = await getKickLivePlaybackUrl(slug);
-  if (live) {
-    playlistUrl = live;
-    mode = "live";
-    startOffsetSec = null; // live edge
+  if (treatAsLive) {
+    // Retry the live probe a few times — Kick/Cloudflare often 403's the
+    // first call from a Worker IP, then succeeds on retry.
+    let live: string | null = null;
+    for (let attempt = 0; attempt < 3 && !live; attempt++) {
+      live = await getKickLivePlaybackUrl(slug);
+      if (!live) await new Promise((r) => setTimeout(r, 400));
+    }
+    if (live) {
+      playlistUrl = live;
+      mode = "live";
+      startOffsetSec = null; // live edge
+    } else {
+      // DO NOT fall through to VOD here — last_known_live=true means the
+      // archive is still in-progress and `resolveVodAt()` will return a 40h+
+      // bogus offset that maps to the start of the VOD on every grab.
+      await supabaseAdmin.from("render_jobs").insert({
+        clip_id: clipId,
+        status: "failed",
+        error_message:
+          "Channel is live but Kick playback URL was unreachable after 3 attempts (likely Cloudflare block from Worker IP)",
+      });
+      return { ok: false, error: "live probe failed" };
+    }
   } else if (targetIso) {
     const vod = await resolveVodAt(slug, targetIso);
     if (vod) {
+      // Validate the VOD actually covers this moment — the in-progress VOD
+      // can report a duration far past what's actually archived.
       playlistUrl = vod.vodUrl;
       mode = "vod";
-      // Pull a 5s lead-in so the moment isn't right at the cut
       startOffsetSec = Math.max(0, vod.startOffsetSec - 5);
     }
   }
@@ -70,7 +108,7 @@ export async function startRenderForClip(clipId: string) {
       clip_id: clipId,
       status: "failed",
       error_message:
-        "No VOD or live playback URL available — channel may be offline",
+        "No VOD or live playback URL available — channel may be offline and not yet archived",
     });
     return { ok: false, error: "No playback URL" };
   }
