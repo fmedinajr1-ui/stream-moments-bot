@@ -106,6 +106,24 @@ function SourcesPage() {
     },
     onError: (e: any) => toast.error(e?.message ?? "Poll failed"),
   });
+  const forceMut = useMutation({
+    mutationFn: (v: { sourceId: string; minutes: number }) =>
+      forceWatch({ data: v }),
+    onSuccess: (r: any) => {
+      toast.success(
+        `WATCHING FOR ${r.minutes}m • ${r.new_clips ?? 0} NEW CLIPS`,
+      );
+      refetch();
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Force watch failed"),
+  });
+  const stopMut = useMutation({
+    mutationFn: (sourceId: string) => stopForce({ data: { sourceId } }),
+    onSuccess: () => {
+      toast.success("STOPPED FORCE WATCH");
+      refetch();
+    },
+  });
 
   async function toggleMonitor(s: Source) {
     await supabase
