@@ -19,6 +19,7 @@ export type Database = {
           auto_grab_cooldown_sec: number
           auto_grab_enabled: boolean
           blocked_keywords: string[]
+          browser_capture_enabled: boolean
           id: string
           is_paused: boolean
           max_clips_per_day: number
@@ -31,6 +32,7 @@ export type Database = {
           auto_grab_cooldown_sec?: number
           auto_grab_enabled?: boolean
           blocked_keywords?: string[]
+          browser_capture_enabled?: boolean
           id?: string
           is_paused?: boolean
           max_clips_per_day?: number
@@ -43,6 +45,7 @@ export type Database = {
           auto_grab_cooldown_sec?: number
           auto_grab_enabled?: boolean
           blocked_keywords?: string[]
+          browser_capture_enabled?: boolean
           id?: string
           is_paused?: boolean
           max_clips_per_day?: number
@@ -159,6 +162,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           auto_grabbed: boolean
+          capture_method: string
           chat_spike_ratio: number | null
           created_at: string
           duration_seconds: number | null
@@ -169,6 +173,7 @@ export type Database = {
           kick_view_count: number | null
           matched_velocity_id: string | null
           platforms: Json
+          raw_storage_path: string | null
           rendered_video_url: string | null
           score_breakdown: Json | null
           score_rationale: string | null
@@ -183,6 +188,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           auto_grabbed?: boolean
+          capture_method?: string
           chat_spike_ratio?: number | null
           created_at?: string
           duration_seconds?: number | null
@@ -193,6 +199,7 @@ export type Database = {
           kick_view_count?: number | null
           matched_velocity_id?: string | null
           platforms?: Json
+          raw_storage_path?: string | null
           rendered_video_url?: string | null
           score_breakdown?: Json | null
           score_rationale?: string | null
@@ -207,6 +214,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           auto_grabbed?: boolean
+          capture_method?: string
           chat_spike_ratio?: number | null
           created_at?: string
           duration_seconds?: number | null
@@ -217,6 +225,7 @@ export type Database = {
           kick_view_count?: number | null
           matched_velocity_id?: string | null
           platforms?: Json
+          raw_storage_path?: string | null
           rendered_video_url?: string | null
           score_breakdown?: Json | null
           score_rationale?: string | null
@@ -331,6 +340,8 @@ export type Database = {
           is_monitoring: boolean
           last_known_live: boolean
           last_polled_at: string | null
+          live_playback_url: string | null
+          live_playback_url_updated_at: string | null
           poll_interval_min: number
           slug: string
           spike_sensitivity: number
@@ -345,6 +356,8 @@ export type Database = {
           is_monitoring?: boolean
           last_known_live?: boolean
           last_polled_at?: string | null
+          live_playback_url?: string | null
+          live_playback_url_updated_at?: string | null
           poll_interval_min?: number
           slug: string
           spike_sensitivity?: number
@@ -359,6 +372,8 @@ export type Database = {
           is_monitoring?: boolean
           last_known_live?: boolean
           last_polled_at?: string | null
+          live_playback_url?: string | null
+          live_playback_url_updated_at?: string | null
           poll_interval_min?: number
           slug?: string
           spike_sensitivity?: number
