@@ -66,7 +66,16 @@ export function SpikeTrackerPanel() {
     (a, s) => a + (s.series ?? []).filter((r: VRow) => r.is_spike).length,
     0,
   );
-  const armed = settings?.auto_grab_enabled !== false && !settings?.is_paused;
+  const totalMessages = sources.reduce(
+    (a, s) =>
+      a +
+      (s.series ?? []).reduce(
+        (b: number, r: VRow) => b + Number(r.msgs_per_sec ?? 0),
+        0,
+      ),
+    0,
+  );
+  const chatSignalLive = totalMessages > 0;
 
   return (
     <section className="bg-panel border border-blood/40 px-3 sm:px-4 py-3">
