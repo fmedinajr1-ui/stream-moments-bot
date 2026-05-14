@@ -126,6 +126,18 @@ function SourcesPage() {
       refetch();
     },
   });
+  const clipNowMut = useMutation({
+    mutationFn: (sourceId: string) => clipNow({ data: { sourceId } }),
+    onSuccess: (r: any) => {
+      if (r?.ok) {
+        toast.success("CLIPPING LIVE MOMENT — RENDERING NOW");
+      } else {
+        toast.error(r?.error ?? "Clip failed");
+      }
+      refetch();
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Clip failed"),
+  });
 
   async function toggleMonitor(s: Source) {
     await supabase
