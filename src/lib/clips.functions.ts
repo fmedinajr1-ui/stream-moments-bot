@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { pollSources } from "@/lib/poll-kick.server";
 import { getChannel } from "@/lib/kick.server";
 import { startRenderForClip } from "@/lib/render-runner.server";
+import { createSpikeClip } from "@/lib/spike-clip.server";
 
 export const listPendingClips = createServerFn({ method: "GET" }).handler(
   async () => {
