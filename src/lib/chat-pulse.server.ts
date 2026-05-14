@@ -50,16 +50,22 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
   const { data: settings } = await supabaseAdmin
     .from("agent_settings")
     .select(
-      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled",
+      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,browser_capture_enabled",
     )
     .limit(1)
     .maybeSingle();
 
   const windowSec = Math.max(15, Number(settings?.spike_window_sec ?? 60));
-  const sampleMs = Math.min(20_000, windowSec * 1000); // cap WS sleep to avoid Worker timeout
+  const sampleMs = Math.min(20_000, windowSec * 1000);
   const minMps = Number(settings?.spike_min_mps ?? 0.5);
   const cooldownSec = Math.max(0, Number(settings?.auto_grab_cooldown_sec ?? 180));
-  const autoEnabled = settings?.auto_grab_enabled !== false && !settings?.is_paused;
+  const browserCapture = settings?.browser_capture_enabled !== false;
+  // Option A: when browser-capture is on, the server NEVER creates spike
+  // clips — the dashboard tab does it. We still record velocity rows.
+  const autoEnabled =
+    !browserCapture &&
+    settings?.auto_grab_enabled !== false &&
+    !settings?.is_paused;
 
   const { data: sources, error } = await supabaseAdmin
     .from("sources")

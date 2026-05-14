@@ -180,6 +180,61 @@ function StreamTile({
     onError: (err: any) => toast.error(err?.message ?? "Grab failed"),
   });
 
+  // ===== Browser-side AUTO-GRAB on chat spike =====
+  // When this tile is armed and the latest velocity row for its source is a
+  // spike (and cooldown elapsed), slice the rolling buffer and upload it.
+  const autoGrabbingRef = useRef(false);
+  const lastAutoAtRef = useRef(0);
+  useEffect(() => {
+    const latest = activity?.latest;
+    if (!latest?.is_spike) return;
+    if (!recorder.ready) return;
+    if (autoGrabbingRef.current) return;
+    // 3 minute cooldown per tile (server cooldown still recorded separately)
+    if (Date.now() - lastAutoAtRef.current < 180_000) return;
+    // Only react to fresh spikes (within last 30s)
+    const ageSec = (Date.now() - +new Date(latest.created_at)) / 1000;
+    if (ageSec > 30) return;
+
+    autoGrabbingRef.current = true;
+    lastAutoAtRef.current = Date.now();
+    (async () => {
+      try {
+        const blob = await recorder.grab(30);
+        if (!blob || blob.size < 1024) return;
+        const tok = await issueToken({ data: { sourceId: source.id } });
+        const fd = new FormData();
+        fd.set("token", tok.token);
+        fd.set("sourceId", source.id);
+        fd.set("durationSec", "30");
+        fd.set("autoGrabbed", "true");
+        fd.set("captureMethod", "browser_record");
+        fd.set("chatSpikeRatio", String(latest.spike_ratio ?? ""));
+        fd.set(
+          "caption",
+          `${source.display_name.toUpperCase()} CHAT SPIKE ${Number(latest.spike_ratio ?? 0).toFixed(1)}x`,
+        );
+        fd.set("file", blob, `auto-${Date.now()}.webm`);
+        const res = await fetch("/api/public/upload-clip", {
+          method: "POST",
+          body: fd,
+        });
+        if (res.ok) {
+          toast.success(
+            `${source.display_name} · AUTO-GRAB (${Number(latest.spike_ratio ?? 0).toFixed(1)}x)`,
+          );
+          setLastGrab(Date.now());
+        } else {
+          console.warn("[auto-grab] upload failed", await res.text());
+        }
+      } catch (err) {
+        console.warn("[auto-grab] failed", err);
+      } finally {
+        autoGrabbingRef.current = false;
+      }
+    })();
+  }, [activity?.latest, recorder.ready, source.id, source.display_name, issueToken, recorder]);
+
   return (
     <div className="bg-panel border border-blood/40 flex flex-col">
       <div className="px-2.5 py-2 border-b border-blood/40 flex items-center justify-between gap-2">

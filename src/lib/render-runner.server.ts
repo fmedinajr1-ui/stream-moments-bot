@@ -1,10 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { submitRender } from "@/lib/shotstack.server";
 import { resolveVodAt } from "@/lib/kick-vod.server";
-import {
-  captureHlsToStorage,
-  getKickLivePlaybackUrl,
-} from "@/lib/hls-capture.server";
+import { captureHlsToStorage } from "@/lib/hls-capture.server";
 
 const APP_BASE =
   process.env.APP_BASE_URL ??
@@ -101,61 +98,53 @@ export async function startRenderForClip(clipId: string) {
     return { ok: false, error: "Missing slug" };
   }
 
-  // Pull the source's last_known_live so we trust the poller over a single
-  // (often Cloudflare-blocked) HTTP probe from this Worker.
+  // Pull the source's last_known_live + cached browser-resolved HLS URL.
+  // Option A: we trust the dashboard browser tab to keep live_playback_url
+  // fresh, and the server NEVER calls Kick's blocked API directly.
   let lastKnownLive = false;
   let lastPolledAt: string | null = null;
+  let cachedPlayback: string | null = null;
+  let cachedPlaybackAgeMin = Infinity;
   if (sourceId) {
     const { data: src } = await supabaseAdmin
       .from("sources")
-      .select("last_known_live, last_polled_at")
+      .select("last_known_live, last_polled_at, live_playback_url, live_playback_url_updated_at")
       .eq("id", sourceId)
       .maybeSingle();
     lastKnownLive = !!src?.last_known_live;
     lastPolledAt = src?.last_polled_at ?? null;
+    cachedPlayback = src?.live_playback_url ?? null;
+    cachedPlaybackAgeMin = src?.live_playback_url_updated_at
+      ? (Date.now() - +new Date(src.live_playback_url_updated_at)) / 60_000
+      : Infinity;
   }
   const polledAgeMin = lastPolledAt
     ? (Date.now() - +new Date(lastPolledAt)) / 60_000
     : Infinity;
   const treatAsLive = lastKnownLive && polledAgeMin < 10;
 
-  // 1) If channel is live RIGHT NOW, capture from the live edge — Kick's
-  //    archive playlist for an in-progress session can be hours stale and
-  //    `resolveVodAt()` happily returns a 40+ hour offset into it.
-  // 2) Only fall back to VOD lookup when the channel is genuinely offline.
   let playlistUrl: string | null = null;
   let startOffsetSec: number | null = null;
   let mode: "vod" | "live" = treatAsLive ? "live" : "vod";
 
   if (treatAsLive) {
-    // Retry the live probe a few times — Kick/Cloudflare often 403's the
-    // first call from a Worker IP, then succeeds on retry.
-    let live: string | null = null;
-    for (let attempt = 0; attempt < 3 && !live; attempt++) {
-      live = await getKickLivePlaybackUrl(slug);
-      if (!live) await new Promise((r) => setTimeout(r, 400));
-    }
-    if (live) {
-      playlistUrl = live;
+    // Use the browser-cached HLS URL only — no direct Kick probe.
+    if (cachedPlayback && cachedPlaybackAgeMin < 30) {
+      playlistUrl = cachedPlayback;
       mode = "live";
-      startOffsetSec = null; // live edge
+      startOffsetSec = null;
     } else {
-      // DO NOT fall through to VOD here — last_known_live=true means the
-      // archive is still in-progress and `resolveVodAt()` will return a 40h+
-      // bogus offset that maps to the start of the VOD on every grab.
       await supabaseAdmin.from("render_jobs").insert({
         clip_id: clipId,
         status: "failed",
         error_message:
-          "Channel is live but Kick playback URL was unreachable after 3 attempts (likely Cloudflare block from Worker IP)",
+          "No fresh live playback URL — open the dashboard Live Watch tab so the browser can record this stream, then try again.",
       });
-      return { ok: false, error: "live probe failed" };
+      return { ok: false, error: "no cached live URL — open Live Watch tab" };
     }
   } else if (targetIso) {
     const vod = await resolveVodAt(slug, targetIso);
     if (vod) {
-      // Validate the VOD actually covers this moment — the in-progress VOD
-      // can report a duration far past what's actually archived.
       playlistUrl = vod.vodUrl;
       mode = "vod";
       startOffsetSec = Math.max(0, vod.startOffsetSec - 5);
