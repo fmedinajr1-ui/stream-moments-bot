@@ -10,6 +10,7 @@ import {
   runPollNow,
 } from "@/lib/clips.functions";
 import {
+  clipNowFromLive,
   forceWatchSource,
   getLatestChatVelocity,
   stopForceWatchSource,
