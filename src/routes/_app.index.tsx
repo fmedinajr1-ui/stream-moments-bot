@@ -2,14 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ClipCard } from "@/components/clip-card";
+import { LiveWatchGrid } from "@/components/live-watch-grid";
+import { SpikeTrackerPanel } from "@/components/spike-tracker";
+import { RecentGrabsTimeline } from "@/components/recent-grabs-timeline";
 import type { MockClip } from "@/lib/mock-clips";
 import {
   listPendingClips,
   setClipStatus,
   getAgentStatus,
   setAgentPaused,
-  listLiveSources,
-  manualGrabClip,
 } from "@/lib/clips.functions";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
