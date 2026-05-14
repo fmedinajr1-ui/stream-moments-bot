@@ -66,7 +66,16 @@ export function SpikeTrackerPanel() {
     (a, s) => a + (s.series ?? []).filter((r: VRow) => r.is_spike).length,
     0,
   );
-  const armed = settings?.auto_grab_enabled !== false && !settings?.is_paused;
+  const totalMessages = sources.reduce(
+    (a, s) =>
+      a +
+      (s.series ?? []).reduce(
+        (b: number, r: VRow) => b + Number(r.msgs_per_sec ?? 0),
+        0,
+      ),
+    0,
+  );
+  const chatSignalLive = totalMessages > 0;
 
   return (
     <section className="bg-panel border border-blood/40 px-3 sm:px-4 py-3">
@@ -81,13 +90,19 @@ export function SpikeTrackerPanel() {
           {settings && (
             <span
               className={`text-[10px] font-mono tracking-widest px-2 py-0.5 border ${
-                armed
+                chatSignalLive
                   ? "bg-blood/10 text-blood border-blood"
                   : "border-muted-foreground/40 text-muted-foreground"
               }`}
-              title="Auto-grab settings"
+              title={
+                chatSignalLive
+                  ? "Chat signal live — spikes can boost clip scores"
+                  : "Chat signal unavailable from upstream API. Capture still works via VOD-resolved marked moments."
+              }
             >
-              {armed ? "● AUTO-GRAB ARMED" : "○ AUTO-GRAB OFF"} · ≥{Number(settings.spike_min_mps).toFixed(1)}/s · {settings.spike_window_sec}s · cd {settings.auto_grab_cooldown_sec}s
+              {chatSignalLive
+                ? `● CHAT LIVE · ≥${Number(settings.spike_min_mps).toFixed(1)}/s · ${settings.spike_window_sec}s`
+                : "○ CHAT SIGNAL UNAVAILABLE"}
             </span>
           )}
         </div>

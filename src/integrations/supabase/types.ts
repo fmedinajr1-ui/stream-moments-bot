@@ -276,6 +276,48 @@ export type Database = {
           },
         ]
       }
+      marked_moments: {
+        Row: {
+          attempts: number
+          caption: string | null
+          created_at: string
+          duration_sec: number
+          id: string
+          last_error: string | null
+          marked_at: string
+          resolved_at: string | null
+          resolved_clip_id: string | null
+          source_id: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          caption?: string | null
+          created_at?: string
+          duration_sec?: number
+          id?: string
+          last_error?: string | null
+          marked_at?: string
+          resolved_at?: string | null
+          resolved_clip_id?: string | null
+          source_id: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          caption?: string | null
+          created_at?: string
+          duration_sec?: number
+          id?: string
+          last_error?: string | null
+          marked_at?: string
+          resolved_at?: string | null
+          resolved_clip_id?: string | null
+          source_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       render_jobs: {
         Row: {
           clip_id: string
