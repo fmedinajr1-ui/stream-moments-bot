@@ -31,6 +31,7 @@ type Source = {
   last_known_live: boolean;
   last_polled_at: string | null;
   spike_sensitivity: number | null;
+  force_live_until: string | null;
 };
 
 function timeAgo(iso: string | null) {
