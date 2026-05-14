@@ -129,7 +129,7 @@ function QueuePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between border-b border-blood/40 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 border-b border-blood/40 pb-4">
         <div>
           <h2 className="font-display text-2xl sm:text-3xl md:text-4xl text-foreground tracking-wider">
             QUEUE
@@ -141,13 +141,13 @@ function QueuePage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
               setMultiSelect((b) => !b);
               setSelected(new Set());
             }}
-            className={`px-4 py-2 text-xs font-mono tracking-widest border ${
+            className={`flex-1 sm:flex-none px-4 py-2.5 text-xs font-mono tracking-widest border min-h-[44px] ${
               multiSelect
                 ? "bg-blood text-blood-foreground border-blood"
                 : "border-blood/60 text-foreground hover:bg-blood/10"
@@ -161,7 +161,7 @@ function QueuePage() {
                 selected.forEach(approve);
                 setSelected(new Set());
               }}
-              className="px-4 py-2 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red"
+              className="flex-1 sm:flex-none px-4 py-2.5 text-xs font-mono tracking-widest bg-blood text-blood-foreground hover:shadow-glow-red min-h-[44px]"
             >
               APPROVE SELECTED ({selected.size})
             </button>
