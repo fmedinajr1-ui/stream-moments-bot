@@ -3,8 +3,9 @@
 
 import type { KickChatMessage } from "@/lib/kick.server";
 
+// Kick's public Pusher app key + cluster (used by kick.com's own web client).
 const PUSHER_URL =
-  "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false";
+  "wss://ws-us2.pusher.com/app/eb1d5f283081a78b932c?protocol=7&client=js&version=7.6.0&flash=false";
 
 export type ChatSample = {
   messages: KickChatMessage[];
