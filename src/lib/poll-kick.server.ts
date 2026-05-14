@@ -208,7 +208,10 @@ export async function pollSources(opts?: { sourceId?: string }): Promise<PollSum
     };
     try {
       const channel = await getChannel(src.slug);
-      sourceLog.live = !!channel?.isLive;
+      const forcedLive =
+        src.force_live_until && new Date(src.force_live_until) > new Date();
+      const effectiveLive = !!channel?.isLive || !!forcedLive;
+      sourceLog.live = effectiveLive;
       await supabaseAdmin
         .from("sources")
         .update({
@@ -227,7 +230,7 @@ export async function pollSources(opts?: { sourceId?: string }): Promise<PollSum
         sourceLog.skipped = "agent_paused";
         return sourceLog;
       }
-      if (!channel?.isLive) {
+      if (!effectiveLive) {
         sourceLog.skipped = "offline";
         return sourceLog;
       }

@@ -311,6 +311,7 @@ export type Database = {
           created_at: string
           display_name: string
           follower_count: number | null
+          force_live_until: string | null
           id: string
           is_monitoring: boolean
           last_known_live: boolean
@@ -324,6 +325,7 @@ export type Database = {
           created_at?: string
           display_name: string
           follower_count?: number | null
+          force_live_until?: string | null
           id?: string
           is_monitoring?: boolean
           last_known_live?: boolean
@@ -337,6 +339,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           follower_count?: number | null
+          force_live_until?: string | null
           id?: string
           is_monitoring?: boolean
           last_known_live?: boolean

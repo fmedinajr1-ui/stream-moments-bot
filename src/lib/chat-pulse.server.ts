@@ -41,11 +41,12 @@ async function resolveChatroomId(slug: string): Promise<number | null> {
 }
 
 export async function runChatPulse(): Promise<ChatPulseSummary> {
+  const nowIso = new Date().toISOString();
   const { data: sources, error } = await supabaseAdmin
     .from("sources")
-    .select("id, slug, spike_sensitivity, last_known_live")
+    .select("id, slug, spike_sensitivity, last_known_live, force_live_until")
     .eq("is_monitoring", true)
-    .eq("last_known_live", true);
+    .or(`last_known_live.eq.true,force_live_until.gt.${nowIso}`);
   if (error) throw error;
 
   const summary: ChatPulseSummary = { polled: 0, spikes: 0, sources: [] };

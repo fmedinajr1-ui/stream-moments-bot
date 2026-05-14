@@ -1,0 +1,1 @@
+ALTER TABLE public.sources ADD COLUMN force_live_until timestamptz;
