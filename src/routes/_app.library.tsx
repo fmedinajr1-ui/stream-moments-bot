@@ -44,6 +44,7 @@ function LibraryPage() {
   const fetchClips = useServerFn(listApprovedClips);
   const record = useServerFn(recordDownload);
   const retryFn = useServerFn(retryRender);
+  const regrabFn = useServerFn(regrabClip);
   const { data, refetch } = useQuery({
     queryKey: ["approved-clips"],
     queryFn: () => fetchClips(),
