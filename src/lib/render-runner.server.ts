@@ -121,7 +121,13 @@ export async function startRenderForClip(clipId: string) {
   const polledAgeMin = lastPolledAt
     ? (Date.now() - +new Date(lastPolledAt)) / 60_000
     : Infinity;
-  const treatAsLive = lastKnownLive && polledAgeMin < 10;
+  // If the moment is meaningfully in the past, prefer VOD even when the
+  // source is currently live — the live edge no longer covers that timestamp.
+  const targetAgeSec = targetIso
+    ? (Date.now() - +new Date(targetIso)) / 1000
+    : 0;
+  const targetIsPast = targetAgeSec > 90;
+  const treatAsLive = lastKnownLive && polledAgeMin < 10 && !targetIsPast;
 
   let playlistUrl: string | null = null;
   let startOffsetSec: number | null = null;
