@@ -260,6 +260,28 @@ function AutoGrabPanel() {
         </button>
       </div>
 
+      <div className="flex items-center justify-between mb-4 pt-3 border-t border-blood/20">
+        <div>
+          <div className="font-display text-base tracking-wider">
+            {autoMark ? "● AUTO-MARK ON" : "○ AUTO-MARK OFF"}
+          </div>
+          <p className="text-[10px] font-mono text-muted-foreground mt-1 max-w-md">
+            On spike, drop a marked moment. Resolver pulls the clip from VOD when the stream ends. No OBS needed.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAutoMark((v) => !v)}
+          className={`px-4 py-2 text-xs font-mono tracking-widest border ${
+            autoMark
+              ? "bg-blood text-blood-foreground border-blood"
+              : "bg-background border-border text-muted-foreground"
+          }`}
+        >
+          {autoMark ? "DISABLE" : "ENABLE"}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <label className="block">
           <span className="text-[10px] font-mono tracking-widest text-muted-foreground">
