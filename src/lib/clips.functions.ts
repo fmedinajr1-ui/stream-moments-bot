@@ -299,6 +299,7 @@ export const updateSpikeSettings = createServerFn({ method: "POST" })
         spike_min_mps: z.number().min(0).max(50).optional(),
         auto_grab_cooldown_sec: z.number().int().min(0).max(3600).optional(),
         auto_grab_enabled: z.boolean().optional(),
+        auto_mark_on_spike: z.boolean().optional(),
       })
       .parse(d),
   )
