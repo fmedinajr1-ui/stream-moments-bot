@@ -192,6 +192,7 @@ function AutoGrabPanel() {
   const [minMps, setMinMps] = useState(0.5);
   const [cooldown, setCooldown] = useState(180);
   const [enabled, setEnabled] = useState(true);
+  const [autoMark, setAutoMark] = useState(true);
 
   useEffect(() => {
     if (!s) return;
@@ -199,6 +200,7 @@ function AutoGrabPanel() {
     setMinMps(Number(s.spike_min_mps));
     setCooldown(s.auto_grab_cooldown_sec);
     setEnabled(s.auto_grab_enabled);
+    setAutoMark(s.auto_mark_on_spike !== false);
   }, [s]);
 
   const save = useMutation({
@@ -209,6 +211,7 @@ function AutoGrabPanel() {
           spike_min_mps: minMps,
           auto_grab_cooldown_sec: cooldown,
           auto_grab_enabled: enabled,
+          auto_mark_on_spike: autoMark,
         },
       }),
     onSuccess: () => {
