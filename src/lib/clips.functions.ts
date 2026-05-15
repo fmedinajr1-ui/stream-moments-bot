@@ -283,7 +283,7 @@ export const getSpikeSettings = createServerFn({ method: "GET" }).handler(
   async () => {
     const { data, error } = await supabaseAdmin
       .from("agent_settings")
-      .select("id,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,is_paused")
+      .select("id,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,is_paused,auto_mark_on_spike")
       .limit(1)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -299,6 +299,7 @@ export const updateSpikeSettings = createServerFn({ method: "POST" })
         spike_min_mps: z.number().min(0).max(50).optional(),
         auto_grab_cooldown_sec: z.number().int().min(0).max(3600).optional(),
         auto_grab_enabled: z.boolean().optional(),
+        auto_mark_on_spike: z.boolean().optional(),
       })
       .parse(d),
   )

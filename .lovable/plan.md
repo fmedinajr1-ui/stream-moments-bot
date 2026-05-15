@@ -1,89 +1,51 @@
-## OBS Replay Buffer integration
+## Goal
 
-Treat OBS as the new primary live-capture path. Mark Moment + VOD resolver stay as fallbacks.
+Make chat spikes automatically create marked moments — no OBS, no local setup. The existing resolver then turns them into clips from the Kick VOD after the stream ends.
 
-### How it will work
+## How it works today vs after
 
-```text
-┌────────────┐   chat spike / MARK MOMENT    ┌──────────────┐
-│  Dashboard │ ────────────────────────────▶ │ trigger API  │
-└────────────┘                               └──────┬───────┘
-                                                    │ OBS WebSocket (SaveReplayBuffer)
-                                                    ▼
-                                          ┌────────────────────┐
-                                          │   OBS on your PC   │
-                                          │   (60s buffer)     │
-                                          └─────────┬──────────┘
-                                                    │ writes .mkv/.mp4 to folder
-                                                    ▼
-                                          ┌────────────────────┐
-                                          │  watcher.js (local)│
-                                          │  fs.watch + upload │
-                                          └─────────┬──────────┘
-                                                    │ POST /api/public/obs-upload
-                                                    ▼
-                                          ┌────────────────────┐
-                                          │   App pipeline:    │
-                                          │ clip → Shotstack   │
-                                          │   → render → ready │
-                                          └────────────────────┘
-```
+**Today** when a chat spike is detected:
+- Records the spike in the database
+- Tries to ping the OBS watcher (does nothing if you're not running it)
+- Only creates a clip if you explicitly turn on server-side HLS capture
 
-Capture path priority:
-1. OBS replay buffer (live, instant — when OBS is running)
-2. Mark Moment → VOD resolver (when OBS is offline)
-3. Existing Kick clips poller (background)
+**After this change**: every spike automatically inserts a row in `marked_moments` (same as if you'd clicked "Mark Moment"). The resolver cron that already exists then pulls the clip from the VOD when it's available — usually within a few minutes after the stream ends.
 
-### What I will build
+## What you'll see
 
-**1. Watcher script (`tools/obs-watcher/`)**
-- `watcher.mjs` — Node script, no install needed beyond Node 18+. Uses `chokidar` to watch the OBS replay output folder. On new file: waits for write to settle, POSTs multipart to `/api/public/obs-upload` with `sourceSlug`, `secret`, `file`. Logs to console + retries on failure.
-- `config.example.json` — `{ obsReplayDir, sourceSlug, uploadSecret, appUrl }`.
-- `README.md` — setup steps: install Node, copy config, `node watcher.mjs`.
-- `trigger.mjs` — small companion that connects to OBS WebSocket (`ws://127.0.0.1:4455`) and exposes a tiny local HTTP server (`http://127.0.0.1:7878/save`) that forwards `SaveReplayBuffer` to OBS. The app's server cannot reach your home machine directly; the trigger flow uses an outbound long-poll instead (see #3).
+- Watch a stream → chat goes wild → a "Marked Moment" appears in your dashboard automatically
+- After the stream ends, the resolver finds it in the VOD and renders a clip
+- Clip shows up in your Library tagged `auto_grabbed: true` with the spike caption
 
-**2. New upload endpoint (`/api/public/obs-upload`)**
-- Mirrors the existing `/api/public/upload-clip` shape but auth is a shared `OBS_UPLOAD_SECRET` header instead of the browser-capture token (no browser involvement).
-- Accepts `.mkv`, `.mp4`, `.webm`. Resolves `sourceSlug` → `source_id`. Inserts `clips` row (`capture_method: "obs_replay"`, `auto_grabbed: true` when triggered automatically), uploads to the existing `clips` storage bucket, then `startRenderForClip(...)` for Shotstack — same downstream pipeline as today.
+## Guardrails (so it doesn't spam)
 
-**3. Auto-trigger (long-poll, no tunnel needed)**
-- New endpoint `/api/public/obs-trigger-poll?sourceSlug=...` (auth: same secret). The trigger.mjs companion long-polls this endpoint (30s timeout). When a chat spike or Mark Moment fires server-side, the app pushes a `{ "action": "save_replay" }` payload into a new `obs_trigger_queue` table; the poll endpoint dequeues and returns it. Companion calls OBS WebSocket `SaveReplayBuffer`. This avoids ngrok/tunnel setup entirely.
-- DB hook: when `chat_velocity` row inserts with `is_spike=true`, push to queue. Same when `MARK MOMENT` is clicked (via existing `markMoment` server fn — extend it to enqueue).
+- Reuses your existing **per-source cooldown** (`auto_grab_cooldown_sec`, default 180s) — won't auto-mark the same channel twice within the cooldown window
+- Reuses your existing **spike sensitivity** per source and **min msgs/sec** in agent settings
+- Respects the global pause toggle (`is_paused`)
+- Adds a new toggle **"Auto-mark moments from chat spikes"** in Settings so you can turn it off independently of HLS auto-grab
 
-**4. Dashboard changes**
-- Add a small **OBS STATUS** chip per source: `CONNECTED` (companion polled within 60s) / `OFFLINE`. Driven by a `last_polled_at` column on a new `obs_clients` table.
-- Keep MARK MOMENT button. When OBS is connected, label changes to `MARK MOMENT (OBS)`; otherwise `MARK MOMENT (VOD)`.
-- New clips show `capture_method: obs_replay` badge.
+## Technical details
 
-**5. Database migration**
-- `obs_trigger_queue` (id, source_id, action, payload jsonb, claimed_at, created_at).
-- `obs_clients` (id, source_slug, last_polled_at, last_save_at).
-- Add `OBS_UPLOAD_SECRET` to project secrets.
+In `src/lib/chat-pulse.server.ts`, when `isSpike && velRow` is true:
+1. Read new flag `auto_mark_on_spike` from `agent_settings` (defaults to `true`)
+2. Check cooldown by querying `marked_moments` for a recent row from the same source
+3. If clear, insert a row into `marked_moments` with:
+   - `source_id`, `marked_at = now()`, `duration_sec = 30`
+   - `caption` built from the loudest sample message (e.g. "Chat spike: 4.2x baseline")
+   - `status = 'pending'`
+4. Write an `audit_log` row (`action: spike_auto_marked`)
+5. The existing `/api/public/cron/resolve-moments` cron already picks it up — no changes needed there
 
-### Files
+Migration adds:
+- `agent_settings.auto_mark_on_spike boolean default true`
 
-New:
-- `tools/obs-watcher/watcher.mjs`, `trigger.mjs`, `config.example.json`, `README.md`
-- `src/routes/api/public/obs-upload.ts`
-- `src/routes/api/public/obs-trigger-poll.ts`
-- `src/lib/obs-trigger.server.ts` (enqueue helper)
-- `supabase/migrations/<ts>_obs_pipeline.sql`
+Settings UI in `src/routes/_app.settings.tsx` gets a new toggle for the flag.
 
-Edited:
-- `src/components/live-watch-grid.tsx` — OBS status chip + label tweak
-- `src/lib/marked-moments.functions.ts` — also enqueue OBS save when client connected
-- `src/lib/chat-pulse.server.ts` — enqueue OBS save on spike
+The OBS nudge stays in place (no-op if watcher isn't running, helpful if it ever is).
 
-Untouched: existing Mark Moment / VOD resolver / Kick clip poller — they stay as fallbacks.
+## Files touched
 
-### What you'll do once
-
-1. Install OBS, add Kick browser source, enable Replay Buffer (Settings → Output → Replay Buffer, 60s).
-2. Install obs-websocket plugin (bundled in OBS 28+), set a password.
-3. `cd tools/obs-watcher && cp config.example.json config.json && edit it && node watcher.mjs` (and `node trigger.mjs` in a second terminal — or one combined `node start.mjs`).
-4. Leave OBS + the watcher running. That's it.
-
-### Out of scope for this round
-
-- Packaging the watcher as an installable .exe / .app (Node script is fine for now).
-- Multi-machine / multi-source OBS (one OBS instance per machine; can extend later).
+- `supabase/migrations/...` — add `auto_mark_on_spike` column
+- `src/lib/chat-pulse.server.ts` — insert marked_moment on spike with cooldown
+- `src/routes/_app.settings.tsx` — add toggle
+- `src/lib/agent.functions.ts` — expose new flag in get/update settings

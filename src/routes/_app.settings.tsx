@@ -192,6 +192,7 @@ function AutoGrabPanel() {
   const [minMps, setMinMps] = useState(0.5);
   const [cooldown, setCooldown] = useState(180);
   const [enabled, setEnabled] = useState(true);
+  const [autoMark, setAutoMark] = useState(true);
 
   useEffect(() => {
     if (!s) return;
@@ -199,6 +200,7 @@ function AutoGrabPanel() {
     setMinMps(Number(s.spike_min_mps));
     setCooldown(s.auto_grab_cooldown_sec);
     setEnabled(s.auto_grab_enabled);
+    setAutoMark(s.auto_mark_on_spike !== false);
   }, [s]);
 
   const save = useMutation({
@@ -209,6 +211,7 @@ function AutoGrabPanel() {
           spike_min_mps: minMps,
           auto_grab_cooldown_sec: cooldown,
           auto_grab_enabled: enabled,
+          auto_mark_on_spike: autoMark,
         },
       }),
     onSuccess: () => {
@@ -254,6 +257,28 @@ function AutoGrabPanel() {
           }`}
         >
           {enabled ? "DISABLE" : "ARM"}
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between mb-4 pt-3 border-t border-blood/20">
+        <div>
+          <div className="font-display text-base tracking-wider">
+            {autoMark ? "● AUTO-MARK ON" : "○ AUTO-MARK OFF"}
+          </div>
+          <p className="text-[10px] font-mono text-muted-foreground mt-1 max-w-md">
+            On spike, drop a marked moment. Resolver pulls the clip from VOD when the stream ends. No OBS needed.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAutoMark((v) => !v)}
+          className={`px-4 py-2 text-xs font-mono tracking-widest border ${
+            autoMark
+              ? "bg-blood text-blood-foreground border-blood"
+              : "bg-background border-border text-muted-foreground"
+          }`}
+        >
+          {autoMark ? "DISABLE" : "ENABLE"}
         </button>
       </div>
 

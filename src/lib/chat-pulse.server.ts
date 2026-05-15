@@ -51,7 +51,7 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
   const { data: settings } = await supabaseAdmin
     .from("agent_settings")
     .select(
-      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,browser_capture_enabled",
+      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,browser_capture_enabled,auto_mark_on_spike",
     )
     .limit(1)
     .maybeSingle();
@@ -67,6 +67,8 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
     !browserCapture &&
     settings?.auto_grab_enabled !== false &&
     !settings?.is_paused;
+  const autoMarkOnSpike =
+    settings?.auto_mark_on_spike !== false && !settings?.is_paused;
 
   const { data: sources, error } = await supabaseAdmin
     .from("sources")
@@ -158,6 +160,59 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
           reason: "chat_spike",
           payload: { spike_ratio: ratio, msgs_per_sec: mps, velocity_id: velRow.id },
         });
+      }
+
+      if (isSpike && velRow && autoMarkOnSpike) {
+        const cooldownSince = new Date(
+          Date.now() - cooldownSec * 1000,
+        ).toISOString();
+        const { data: recentMark } = await supabaseAdmin
+          .from("marked_moments")
+          .select("id, created_at")
+          .eq("source_id", src.id)
+          .gte("created_at", cooldownSince)
+          .limit(1);
+
+        if (recentMark && recentMark.length > 0) {
+          await supabaseAdmin.from("audit_log").insert({
+            action: "spike_auto_mark_skipped",
+            details: {
+              source_id: src.id,
+              slug: src.slug,
+              spike_ratio: ratio,
+              msgs_per_sec: mps,
+              reason: `cooldown (${cooldownSec}s)`,
+              last_mark_id: recentMark[0].id,
+            },
+          });
+        } else {
+          const topMsg = sampleMessages[0]?.text?.trim();
+          const caption = topMsg
+            ? `Chat spike (${ratio.toFixed(1)}x): "${topMsg.slice(0, 80)}"`
+            : `Chat spike — ${ratio.toFixed(1)}x baseline`;
+          const { data: mark, error: markErr } = await supabaseAdmin
+            .from("marked_moments")
+            .insert({
+              source_id: src.id,
+              marked_at: new Date().toISOString(),
+              duration_sec: 30,
+              caption,
+              status: "pending",
+            })
+            .select("id")
+            .single();
+          await supabaseAdmin.from("audit_log").insert({
+            action: mark ? "spike_auto_marked" : "spike_auto_mark_failed",
+            details: {
+              source_id: src.id,
+              slug: src.slug,
+              spike_ratio: ratio,
+              msgs_per_sec: mps,
+              marked_moment_id: mark?.id,
+              error: markErr?.message,
+            },
+          });
+        }
       }
 
       if (isSpike && velRow && autoEnabled) {
