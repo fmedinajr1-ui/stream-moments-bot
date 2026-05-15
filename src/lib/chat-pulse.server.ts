@@ -162,6 +162,59 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
         });
       }
 
+      if (isSpike && velRow && autoMarkOnSpike) {
+        const cooldownSince = new Date(
+          Date.now() - cooldownSec * 1000,
+        ).toISOString();
+        const { data: recentMark } = await supabaseAdmin
+          .from("marked_moments")
+          .select("id, created_at")
+          .eq("source_id", src.id)
+          .gte("created_at", cooldownSince)
+          .limit(1);
+
+        if (recentMark && recentMark.length > 0) {
+          await supabaseAdmin.from("audit_log").insert({
+            action: "spike_auto_mark_skipped",
+            details: {
+              source_id: src.id,
+              slug: src.slug,
+              spike_ratio: ratio,
+              msgs_per_sec: mps,
+              reason: `cooldown (${cooldownSec}s)`,
+              last_mark_id: recentMark[0].id,
+            },
+          });
+        } else {
+          const topMsg = sampleMessages[0]?.text?.trim();
+          const caption = topMsg
+            ? `Chat spike (${ratio.toFixed(1)}x): "${topMsg.slice(0, 80)}"`
+            : `Chat spike — ${ratio.toFixed(1)}x baseline`;
+          const { data: mark, error: markErr } = await supabaseAdmin
+            .from("marked_moments")
+            .insert({
+              source_id: src.id,
+              marked_at: new Date().toISOString(),
+              duration_sec: 30,
+              caption,
+              status: "pending",
+            })
+            .select("id")
+            .single();
+          await supabaseAdmin.from("audit_log").insert({
+            action: mark ? "spike_auto_marked" : "spike_auto_mark_failed",
+            details: {
+              source_id: src.id,
+              slug: src.slug,
+              spike_ratio: ratio,
+              msgs_per_sec: mps,
+              marked_moment_id: mark?.id,
+              error: markErr?.message,
+            },
+          });
+        }
+      }
+
       if (isSpike && velRow && autoEnabled) {
         // Per-source cooldown — skip if we already auto-grabbed within window.
         const cooldownSince = new Date(Date.now() - cooldownSec * 1000).toISOString();
