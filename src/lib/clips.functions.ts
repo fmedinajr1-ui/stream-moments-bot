@@ -283,7 +283,7 @@ export const getSpikeSettings = createServerFn({ method: "GET" }).handler(
   async () => {
     const { data, error } = await supabaseAdmin
       .from("agent_settings")
-      .select("id,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,is_paused")
+      .select("id,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,is_paused,auto_mark_on_spike")
       .limit(1)
       .maybeSingle();
     if (error) throw new Error(error.message);
