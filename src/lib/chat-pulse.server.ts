@@ -51,7 +51,7 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
   const { data: settings } = await supabaseAdmin
     .from("agent_settings")
     .select(
-      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,browser_capture_enabled",
+      "is_paused,spike_window_sec,spike_min_mps,auto_grab_cooldown_sec,auto_grab_enabled,browser_capture_enabled,auto_mark_on_spike",
     )
     .limit(1)
     .maybeSingle();
