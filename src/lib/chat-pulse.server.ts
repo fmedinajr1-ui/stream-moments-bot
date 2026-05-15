@@ -67,6 +67,8 @@ export async function runChatPulse(): Promise<ChatPulseSummary> {
     !browserCapture &&
     settings?.auto_grab_enabled !== false &&
     !settings?.is_paused;
+  const autoMarkOnSpike =
+    settings?.auto_mark_on_spike !== false && !settings?.is_paused;
 
   const { data: sources, error } = await supabaseAdmin
     .from("sources")
