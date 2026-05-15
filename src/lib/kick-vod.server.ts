@@ -40,9 +40,12 @@ export async function resolveVodAt(
   for (const v of list) {
     const startIso =
       v.created_at ?? v.start_time ?? v.video?.created_at ?? null;
-    const durationSec = Number(
+    let durationSec = Number(
       v.duration ?? v.video?.duration ?? v.session_duration ?? 0,
     );
+    // Kick sometimes returns duration in milliseconds. Treat anything
+    // bigger than 48h as ms and convert.
+    if (durationSec > 60 * 60 * 48) durationSec = Math.round(durationSec / 1000);
     if (!startIso || !durationSec) continue;
     const start = +new Date(startIso);
     const end = start + durationSec * 1000;
