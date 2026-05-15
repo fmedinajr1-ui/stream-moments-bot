@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           auto_grab_cooldown_sec: number
           auto_grab_enabled: boolean
+          auto_mark_on_spike: boolean
           blocked_keywords: string[]
           browser_capture_enabled: boolean
           id: string
@@ -31,6 +32,7 @@ export type Database = {
         Insert: {
           auto_grab_cooldown_sec?: number
           auto_grab_enabled?: boolean
+          auto_mark_on_spike?: boolean
           blocked_keywords?: string[]
           browser_capture_enabled?: boolean
           id?: string
@@ -44,6 +46,7 @@ export type Database = {
         Update: {
           auto_grab_cooldown_sec?: number
           auto_grab_enabled?: boolean
+          auto_mark_on_spike?: boolean
           blocked_keywords?: string[]
           browser_capture_enabled?: boolean
           id?: string

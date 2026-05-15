@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_settings ADD COLUMN IF NOT EXISTS auto_mark_on_spike boolean NOT NULL DEFAULT true;
